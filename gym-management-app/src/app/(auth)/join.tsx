@@ -7,6 +7,10 @@
  * plainly that it is not connected yet (Parts 2-3 deliver real delivery and
  * review). Resend cooldown and attempt caps are shown; enforcement arrives
  * with the backend.
+ *
+ * Visual direction: "Nexa for Pulse" — the same minimal midnight-navy and
+ * soft-blue language as the redesigned login, so the two screens read as
+ * one application. Plan benefits shown here are demo-labelled demo content.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -17,14 +21,13 @@ import { AppText } from '@/components/ui/text';
 import { Button, IconButton } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { OtpInput } from '@/components/ui/otp-input';
-import { Card, Divider, Well } from '@/components/ui/card';
+import { Well } from '@/components/ui/card';
+import { PressSurface } from '@/components/ui/press-surface';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { StepDots } from '@/components/ui/step-dots';
-import { PressSurface } from '@/components/ui/press-surface';
 import { RiseIn } from '@/components/ui/rise-in';
-import { Ionicons } from '@expo/vector-icons';
+import { AuthHeader, AuthPlanCard } from '@/components/auth/auth-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { hapticSelect } from '@/utils/haptics';
 import { demoPlans } from '@/data/demo';
 import { formatCurrency, isEmail, isPhone } from '@/utils/format';
 
@@ -32,7 +35,7 @@ const STEPS = ['Details', 'Verify', 'Review'] as const;
 
 export default function JoinScreen() {
   const tokens = useTokens();
-  const { colors, spacing, radius } = tokens;
+  const { colors, spacing } = tokens;
 
   const [step, setStep] = useState(0);
   const [fullName, setFullName] = useState('');
@@ -70,7 +73,7 @@ export default function JoinScreen() {
   const maxAttempts = 5;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.authBg }} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm }}>
@@ -78,30 +81,32 @@ export default function JoinScreen() {
           <StatusBadge label={`Step ${step + 1} of 3`} tone="neutral" small />
         </View>
 
-        <AppText variant="display" style={{ marginTop: spacing.xs }}>
-          {step === 0 ? 'Join the gym' : step === 1 ? 'Verify it is you' : 'Review and submit'}
-        </AppText>
-        <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
-          {step === 0
-            ? 'A few details and the plan you want.'
-            : step === 1
-              ? 'Both phone and email checks are mandatory before an application can be reviewed.'
-              : 'Check everything, then submit for the owner to review.'}
-        </AppText>
+        <AuthHeader
+          brandLabel="PULSE GYM"
+          heading={step === 0 ? 'Create Account' : step === 1 ? 'Verify it is you' : 'Review and submit'}
+          subcopy={
+            step === 0
+              ? 'Start your journey with Pulse Gym.'
+              : step === 1
+                ? 'Both phone and email checks are mandatory before an application can be reviewed.'
+                : 'Check everything, then submit for the owner to review.'
+          }
+        />
 
-        {/* Step indicator: numbered circles (StepDots) */}
-        <View style={{ marginTop: spacing.md }}>
-          <StepDots steps={STEPS} current={step} />
+        {/* Step indicator — Nexa tones */}
+        <View style={{ marginTop: spacing['3xs'], marginBottom: spacing.md }}>
+          <StepDots steps={STEPS} current={step} tone="auth" />
         </View>
 
         {step === 0 && (
-          <RiseIn style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+          <RiseIn key={`step-${step}`} style={{ gap: spacing.sm }}>
             <TextField
               label="Full name"
               placeholder="As on your ID"
               value={fullName}
               onChangeText={setFullName}
               error={attempted(errors.fullName)}
+              accentColor={colors.authAccent}
             />
             <TextField
               label="Mobile number"
@@ -113,6 +118,7 @@ export default function JoinScreen() {
               onChangeText={setPhone}
               error={attempted(errors.phone)}
               helper="We send a one-time code to this number."
+              accentColor={colors.authAccent}
             />
             <TextField
               label="Email address"
@@ -125,87 +131,63 @@ export default function JoinScreen() {
               onChangeText={setEmail}
               error={attempted(errors.email)}
               helper="A verification link is sent here. Checks are mandatory."
+              accentColor={colors.authAccent}
             />
             <View>
-              <AppText variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>
+              <AppText variant="label" style={{ color: colors.authInkMuted, marginBottom: spacing.xs }}>
                 Membership plan
               </AppText>
               <View style={{ gap: spacing.xs }}>
-                {demoPlans.map((p) => {
-                  const selected = planId === p.id;
-                  return (
-                    <PressSurface
-                      key={p.id}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: selected ? selected : undefined }}
-                      onPress={() => {
-                        hapticSelect();
-                        setPlanId(p.id);
-                        setErrors((e) => ({ ...e, planId: undefined }));
-                      }}
-                      scaleOnPress={false}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        minHeight: 56,
-                        paddingHorizontal: spacing.md,
-                        paddingVertical: spacing.sm,
-                        borderRadius: radius.sm,
-                        borderWidth: 1,
-                        borderColor: selected ? colors.accent : colors.rule,
-                        backgroundColor: selected ? colors.surfaceAlt : colors.surface,
-                      }}>
-                      <View>
-                        <AppText variant="bodyStrong" style={{ color: selected ? colors.ink : colors.inkMuted }}>
-                          {p.name}
-                        </AppText>
-                        <AppText variant="caption" tone={selected ? 'accent' : 'subtle'}>
-                          {p.price ? `${formatCurrency(p.price)} at today's listed price` : ''}
-                        </AppText>
-                      </View>
-                      <Ionicons
-                        name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={20}
-                        color={selected ? colors.accent : colors.inkSubtle}
-                      />
-                    </PressSurface>
-                  );
-                })}
+                {demoPlans.map((p) => (
+                  <AuthPlanCard
+                    key={p.id}
+                    name={p.name}
+                    duration={p.duration}
+                    price={formatCurrency(p.price)}
+                    highlights={p.highlights ?? []}
+                    selected={planId === p.id}
+                    onPress={() => {
+                      setPlanId(p.id);
+                      setErrors((e) => ({ ...e, planId: undefined }));
+                    }}
+                  />
+                ))}
               </View>
               {errors.planId && (
-                <AppText variant="caption" style={{ color: colors.danger }}>
+                <AppText variant="caption" style={{ color: colors.danger, marginTop: spacing['3xs'] }}>
                   {errors.planId}
                 </AppText>
               )}
-              <Well style={{ marginTop: spacing['3xs'] }}>
+              <Well style={{ marginTop: spacing.xs }}>
                 <AppText variant="caption" tone="muted">
                   If you ever renew at a later listed price, your agreed price is protected: existing subscriptions keep the price they joined at.
                 </AppText>
               </Well>
             </View>
             <View style={{ marginTop: spacing.xs }}>
-              <Button label="Continue to verification" icon="arrow-forward" fullWidth onPress={goDetails} />
+              <Button label="Continue to verification" icon="arrow-forward" fullWidth variant="primarySoft" onPress={goDetails} />
             </View>
           </RiseIn>
         )}
 
         {step === 1 && (
-          <RiseIn style={{ marginTop: spacing.lg, gap: spacing.lg }}>
+          <RiseIn key={`step-${step}`} style={{ gap: spacing.lg }}>
             {/* Phone OTP */}
-            <Card>
+            <CardShell>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <AppText variant="heading">Phone code</AppText>
+                <AppText variant="heading" style={{ color: colors.authInk }}>
+                  Phone code
+                </AppText>
                 <StatusBadge label="Not connected yet" tone="warning" small />
               </View>
-              <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
+              <AppText variant="label" style={{ color: colors.authInkMuted, marginTop: spacing['3xs'] }}>
                 6 digits sent to {phone || 'your number'}.
               </AppText>
               <View style={{ marginTop: spacing.sm }}>
                 <OtpInput onChange={setOtp} />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xs }}>
-                <AppText variant="caption" tone="subtle">
+                <AppText variant="caption" style={{ color: colors.authInkSubtle }}>
                   Attempts used: {attempts} of {maxAttempts}, then the code resets for security.
                 </AppText>
                 <PressSurface
@@ -217,23 +199,25 @@ export default function JoinScreen() {
                     setAttempts((a) => Math.min(maxAttempts, a + 1));
                   }}
                   style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xxs }}>
-                  <AppText variant="label" tone={resendIn > 0 ? 'subtle' : 'accent'}>
+                  <AppText variant="label" style={{ color: resendIn > 0 ? colors.authInkSubtle : colors.authAccent }}>
                     {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
                   </AppText>
                 </PressSurface>
               </View>
-              <AppText variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>
+              <AppText variant="caption" style={{ color: colors.authInkMuted, marginTop: spacing.sm }}>
                 In this preview no SMS is sent and no code can succeed. Verification completes on the server in Part 2.
               </AppText>
-            </Card>
+            </CardShell>
 
             {/* Email verification */}
-            <Card>
+            <CardShell>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <AppText variant="heading">Email link</AppText>
+                <AppText variant="heading" style={{ color: colors.authInk }}>
+                  Email link
+                </AppText>
                 <StatusBadge label="Not connected yet" tone="warning" small />
               </View>
-              <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
+              <AppText variant="label" style={{ color: colors.authInkMuted, marginTop: spacing['3xs'] }}>
                 A verification link would go to {email || 'your email'}.
               </AppText>
               <Well style={{ marginTop: spacing.sm }}>
@@ -241,39 +225,39 @@ export default function JoinScreen() {
                   The link opens this app and confirms ownership of the address. It expires, it is single-use, and its check is cryptographically signed server-side.
                 </AppText>
               </Well>
-            </Card>
+            </CardShell>
 
-            <Button label="Continue to review" icon="arrow-forward" fullWidth onPress={() => setStep(2)} />
-            <AppText variant="caption" tone="subtle" align="center">
+            <Button label="Continue to review" icon="arrow-forward" fullWidth variant="primarySoft" onPress={() => setStep(2)} />
+            <AppText variant="caption" style={{ color: colors.authInkSubtle }} align="center">
               Both checks must pass before the owner reviews an application. Nothing is verified in this preview.
             </AppText>
           </RiseIn>
         )}
 
         {step === 2 && (
-          <RiseIn style={{ marginTop: spacing.lg, gap: spacing.md }}>
-            <Card>
+          <RiseIn key={`step-${step}`} style={{ gap: spacing.md }}>
+            <CardShell>
               <View style={{ gap: spacing.xs }}>
                 <ReviewLine label="Name" value={fullName || 'Not entered'} />
-                <Divider />
+                <ReviewDivider />
                 <ReviewLine label="Mobile" value={phone || 'Not entered'} />
-                <Divider />
+                <ReviewDivider />
                 <ReviewLine label="Email" value={email || 'Not entered'} />
-                <Divider />
+                <ReviewDivider />
                 <ReviewLine label="Plan" value={plan ? `${plan.name} · ${formatCurrency(plan.price)}` : 'Not chosen'} />
-                <Divider />
+                <ReviewDivider />
                 <ReviewLine label="Phone check" value="Not verified (no server)" />
-                <Divider />
+                <ReviewDivider />
                 <ReviewLine label="Email check" value="Not verified (no server)" />
               </View>
-            </Card>
+            </CardShell>
             <Well>
               <AppText variant="caption" tone="muted">
                 Submitting starts nothing yet: there is no backend in this preview. Parts 2-3 connect applications, verification and the owner&apos;s review. Membership activates only after full payment is verified.
               </AppText>
             </Well>
-            <Button label="Submit application" icon="paper-plane-outline" fullWidth onPress={() => undefined} disabled />
-            <AppText variant="caption" tone="subtle" align="center" style={{ marginBottom: spacing.lg }}>
+            <Button label="Submit application" icon="paper-plane-outline" fullWidth variant="primarySoft" onPress={() => undefined} disabled />
+            <AppText variant="caption" style={{ color: colors.authInkSubtle, marginBottom: spacing.lg }} align="center">
               Submit is disabled on purpose. An application that was never delivered must never read as sent.
             </AppText>
           </RiseIn>
@@ -281,7 +265,7 @@ export default function JoinScreen() {
 
         {/* Example states strip (designed states, labelled as examples) */}
         <View style={{ marginTop: spacing.xl }}>
-          <AppText variant="label" tone="muted">
+          <AppText variant="label" style={{ color: colors.authInkMuted }}>
             Application states the owner will see
           </AppText>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs }}>
@@ -296,13 +280,38 @@ export default function JoinScreen() {
   );
 }
 
+/** Auth-scope card shell: elevated midnight surface with a hairline border. */
+function CardShell({ children }: { children: React.ReactNode }) {
+  const tokens = useTokens();
+  const { colors, spacing, radius } = tokens;
+  return (
+    <View
+      style={{
+        backgroundColor: colors.authSurface,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.authRule,
+        padding: spacing.md,
+      }}>
+      {children}
+    </View>
+  );
+}
+
+function ReviewDivider() {
+  const tokens = useTokens();
+  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: tokens.colors.authRule }} />;
+}
+
 function ReviewLine(props: { label: string; value: string }) {
+  const tokens = useTokens();
+  const { colors } = tokens;
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 32, alignItems: 'center' }}>
-      <AppText variant="label" tone="muted">
+      <AppText variant="label" style={{ color: colors.authInkMuted }}>
         {props.label}
       </AppText>
-      <AppText variant="label" style={{ textAlign: 'right', flexShrink: 1, fontWeight: '600' }}>
+      <AppText variant="label" style={{ textAlign: 'right', flexShrink: 1, fontWeight: '600', color: colors.authInk }}>
         {props.value}
       </AppText>
     </View>

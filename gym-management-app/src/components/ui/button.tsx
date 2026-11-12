@@ -17,7 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressSurface } from '@/components/ui/press-surface';
 import { useTokens } from '@/hooks/use-tokens';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'onAccent';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'onAccent' | 'primarySoft';
 export type ButtonSize = 'medium' | 'small';
 
 interface ButtonProps {
@@ -59,6 +59,9 @@ export function Button(
     // Danger fills keep a white label; the dark accentInk would fail on red.
     danger: { bg: colors.dangerStrong, fg: colors.ink },
     onAccent: { fg: colors.accentInk, border: colors.accentInk },
+    // Auth-only ("Nexa for Pulse"): soft-blue fill, dark label — the
+    // authentication screens' primary; workspaces keep the amber primary.
+    primarySoft: { bg: colors.authAccent, fg: colors.authAccentInk },
   };
 
   const v = palette[variant];

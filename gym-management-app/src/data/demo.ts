@@ -24,10 +24,38 @@ function isoDaysAgo(days: number, hour = 7, minute = 30): string {
 }
 
 export const demoPlans: MembershipPlan[] = [
-  { id: 'plan-monthly', name: 'Monthly', duration: 'monthly', price: 1200, currency: 'INR' },
-  { id: 'plan-quarterly', name: 'Quarterly', duration: 'quarterly', price: 3000, currency: 'INR' },
-  { id: 'plan-half', name: 'Half yearly', duration: 'halfYearly', price: 5500, currency: 'INR' },
-  { id: 'plan-yearly', name: 'Yearly', duration: 'yearly', price: 9600, currency: 'INR' },
+  {
+    id: 'plan-monthly',
+    name: 'Monthly',
+    duration: 'monthly',
+    price: 1200,
+    currency: 'INR',
+    highlights: ['Full gym floor access', 'One scheduled training review', 'Freeze requests allowed'],
+  },
+  {
+    id: 'plan-quarterly',
+    name: 'Quarterly',
+    duration: 'quarterly',
+    price: 3000,
+    currency: 'INR',
+    highlights: ['Full gym floor access', 'Group sessions included', 'Freeze requests allowed'],
+  },
+  {
+    id: 'plan-half',
+    name: 'Half yearly',
+    duration: 'halfYearly',
+    price: 5500,
+    currency: 'INR',
+    highlights: ['Full gym floor access', 'Group sessions included', 'Priority renewal window'],
+  },
+  {
+    id: 'plan-yearly',
+    name: 'Yearly',
+    duration: 'yearly',
+    price: 9600,
+    currency: 'INR',
+    highlights: ['Full gym floor access', 'Group sessions included', 'Priority renewal window', 'Two guest passes a month'],
+  },
 ];
 
 export const demoMembers: Member[] = [

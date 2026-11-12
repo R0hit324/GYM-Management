@@ -25,10 +25,12 @@ export interface TextFieldProps extends Omit<TextInputProps, 'secureTextEntry'> 
   secure?: boolean;
   leadingIcon?: keyof typeof Ionicons.glyphMap;
   trailing?: ReactNode;
+  /** Focus-ring colour override (additive). Auth screens pass the soft blue. */
+  accentColor?: string;
 }
 
 export const TextField = forwardRef<ComponentRef<typeof TextInput>, TextFieldProps>(function TextField(
-  { label, error, helper, secure = false, leadingIcon, trailing, style, ...rest },
+  { label, error, helper, secure = false, leadingIcon, trailing, accentColor, style, ...rest },
   ref,
 ) {
   const tokens = useTokens();
@@ -36,7 +38,7 @@ export const TextField = forwardRef<ComponentRef<typeof TextInput>, TextFieldPro
   const [focused, setFocused] = useState(false);
   const [revealed, setRevealed] = useState(!secure);
 
-  const borderColor = error ? colors.dangerStrong : focused ? colors.accent : colors.rule;
+  const borderColor = error ? colors.dangerStrong : focused ? accentColor ?? colors.accent : colors.rule;
   const borderWidth = 1; // constant width across states — never a border-shift
   const helperText = error ?? helper;
 

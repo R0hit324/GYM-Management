@@ -28,6 +28,8 @@ export function ModalSheet(props: {
   subtitle?: string;
   toneBadge?: ReactNode;
   children: ReactNode;
+  /** Additive: 'auth' renders the Nexa-for-Pulse surface for auth sheets. */
+  surface?: 'default' | 'auth';
 }) {
   const tokens = useTokens();
   const reduce = useReduceMotion();
@@ -35,6 +37,9 @@ export function ModalSheet(props: {
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
   const [mounted, setMounted] = useState(props.visible);
+  const auth = props.surface === 'auth';
+  const sheetBg = auth ? colors.authSurface : colors.surface;
+  const sheetTitle = auth ? colors.authInk : colors.ink;
 
   const unmount = () => setMounted(false);
 
@@ -83,7 +88,7 @@ export function ModalSheet(props: {
           <View
             style={[
               {
-                backgroundColor: colors.surface,
+                backgroundColor: sheetBg,
                 borderTopLeftRadius: radius.lg,
                 borderTopRightRadius: radius.lg,
                 paddingTop: spacing.sm,
@@ -99,11 +104,13 @@ export function ModalSheet(props: {
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
-                  <AppText variant="title">{props.title}</AppText>
+                  <AppText variant="title" style={{ color: sheetTitle }}>
+                    {props.title}
+                  </AppText>
                   {props.toneBadge}
                 </View>
                 {props.subtitle && (
-                  <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
+                  <AppText variant="label" style={{ color: auth ? colors.authInkMuted : colors.inkMuted, marginTop: spacing['3xs'] }}>
                     {props.subtitle}
                   </AppText>
                 )}

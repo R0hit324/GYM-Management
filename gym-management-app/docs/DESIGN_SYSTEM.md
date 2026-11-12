@@ -35,8 +35,30 @@ scripts/contrast-check.mjs` (all pass, AA 4.5:1; heatmap non-text pairs at
 
 ---
 
-## Design Direction: "Ember Night" — v4 dark theme (superseded by v5, historical)
+## Auth surface: "Nexa for Pulse" (login / join / recovery only)
 
+The authentication screens use a separate, scoped palette inspired by the
+Nexa minimal login reference (Dribbble, designer Hasan — live fetch was
+blocked in this environment; built from the brief's detailed spec of the
+reference). Midnight navy ground `authBg #050814`, soft blue accent
+`authAccent #9CB7F7` reserved for CTAs/focus/selection with a dark label
+`authAccentInk #0A0F22`, calm slate text ladder (`authInk #F2F4FA`,
+`authInkMuted #AFB2B9`, `authInkSubtle #7186BC`), elevated input surface
+`authField #0D1326` with hairline `authRule #1B2136` borders. The amber
+Coach Board system is untouched everywhere outside the auth screens, and
+semantic danger/success tokens are shared.
+
+Additive component APIs: `TextField accentColor`, `Button variant
+'primarySoft'`, `ModalSheet surface='auth'`, `StepDots tone='auth'`; new
+auth-only components live in `src/components/auth/auth-ui.tsx`
+(`AuthHeader`, `CategorySelector`, `AuthErrorMessage`, `AuthPlanCard`).
+Plan benefit lines in signup are demo-labelled `demoPlans.highlights`.
+The selected account category remains an expectation only — authorisation
+is verified by the backend; no copy or logic implying otherwise was changed.
+
+---
+
+## Design Direction: "Ember Night" — v4 dark theme (superseded by v5, historical)
 
 v4 is a full visual redesign driven by the user's 8-screen reference image
 (splash, login, join, member/receptionist/owner dashboards, membership plans,

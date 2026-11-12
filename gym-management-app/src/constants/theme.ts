@@ -88,6 +88,24 @@ export const Colors = {
   chartTertiary: '#7A8087',
   chartQuaternary: '#4ADE80',
   chartRule: '#2A2D33',
+
+  // ---- Auth surface ("Nexa for Pulse", login/join/recovery only) ------
+  // Inspired by the Nexa minimal login reference (midnight navy ground,
+  // soft-blue accent, calm slate ladder). Scoped to the authentication
+  // screens: the workspaces keep the Coach Board amber system. Semantic
+  // states above (danger/success) are shared, not duplicated.
+  authBg: '#050814', // midnight navy screen ground
+  authSurface: '#0A0E1E', // cards, logo plate, sheets on auth screens
+  authField: '#0D1326', // elevated input surface
+  authRule: '#1B2136', // hairline borders
+  authRuleStrong: '#313957', // stronger border / upcoming step
+  authAccent: '#9CB7F7', // soft blue: CTAs, focus ring, selected state
+  authAccentDeep: '#82A3EF', // pressed CTA
+  authAccentInk: '#0A0F22', // dark label on the soft-blue fill
+  authInk: '#F2F4FA', // primary text
+  authInkMuted: '#AFB2B9', // secondary text
+  authInkSubtle: '#7186BC', // captions, metadata
+  authSelectedBg: '#152042', // selected category tint
 } as const;
 
 export type ColorToken = keyof typeof Colors;

@@ -10,6 +10,11 @@
  * Part 1 restriction: no backend is connected. This screen validates
  * locally, never claims a successful sign-in, and offers an explicit demo
  * preview of the workspaces instead.
+ *
+ * Visual direction: "Nexa for Pulse" — minimal mobile login inspired by the
+ * Nexa reference (midnight navy ground #050814, soft blue #9CB7F7 accent,
+ * calm slate ladder, hairline borders, generous spacing). Pulse Gym keeps
+ * its brand mark and name; the workspaces keep the Coach Board system.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
@@ -22,6 +27,7 @@ import { TextField } from '@/components/ui/text-field';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { PressSurface } from '@/components/ui/press-surface';
 import { DemoBadge } from '@/components/ui/demo-badge';
+import { AuthHeader, CategorySelector, AuthErrorMessage, type AuthCategory } from '@/components/auth/auth-ui';
 import { Ionicons } from '@expo/vector-icons';
 import { useTokens } from '@/hooks/use-tokens';
 import { hapticSelect } from '@/utils/haptics';
@@ -30,10 +36,10 @@ import type { Role } from '@/types/domain';
 
 const roleOrder: Role[] = ['owner', 'receptionist', 'member'];
 
-const roleMeta: Record<Role, { label: string; blurb: string; tone: string }> = {
-  owner: { label: 'Owner', blurb: 'Full administration', tone: 'owner' },
-  receptionist: { label: 'Receptionist', blurb: 'Daily operations', tone: 'reception' },
-  member: { label: 'Member', blurb: 'Own membership', tone: 'member' },
+const roleMeta: Record<Role, { label: string; blurb: string }> = {
+  owner: { label: 'Owner', blurb: 'Full administration' },
+  receptionist: { label: 'Receptionist', blurb: 'Daily operations' },
+  member: { label: 'Member', blurb: 'Own membership' },
 };
 
 export default function LoginScreen() {
@@ -84,84 +90,36 @@ export default function LoginScreen() {
     [role],
   );
 
+  const pickRole = useCallback((id: AuthCategory) => {
+    hapticSelect();
+    setRole(id as Role);
+    setSubmitError(null);
+  }, []);
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.paper, paddingTop: insets.top + 8 }}
+      style={{ flex: 1, backgroundColor: colors.authBg, paddingTop: insets.top + 8 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
-        {/* Wordmark */}
-        <View style={{ alignItems: 'center', marginTop: spacing.lg, marginBottom: spacing.xl }}>
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: radius.md,
-              backgroundColor: colors.accent,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: spacing.sm,
-            }}>
-            <Ionicons name="barbell" size={28} color={colors.accentInk} />
-          </View>
-          <AppText variant="displayXL">
-            Pulse <AppText variant="displayXL" style={{ color: colors.accent }}>Gym</AppText>
-          </AppText>
-          <AppText variant="label" tone="muted">
-            Membership and daily operations
-          </AppText>
-        </View>
+        <AuthHeader
+          brandLabel="PULSE GYM"
+          heading="Welcome Back"
+          subcopy="Sign in to continue your fitness journey."
+        />
 
-        {/* Role selector */}
-        <View accessibilityLabel="Account type. Your role is verified by the gym after sign-in.">
-          <AppText variant="heading">Sign in as</AppText>
-          <AppText variant="caption" tone="muted" style={{ marginTop: spacing['3xs'] }}>
-            Pick what you expect to be. The gym verifies your actual role after sign-in.
-          </AppText>
-          <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
-            {roleOrder.map((r, i) => {
-              const meta = roleMeta[r];
-              const selected = role === r;
-              return (
-                <PressSurface
-                  key={r}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: selected ? selected : undefined }}
-                  accessibilityLabel={`${meta.label}, ${meta.blurb}`}
-                  onPress={() => {
-                    hapticSelect();
-                    setRole(r);
-                    setSubmitError(null);
-                  }}
-                  style={[
-                    {
-                      flex: 1,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      gap: spacing['3xs'],
-                      paddingVertical: spacing.sm,
-                      borderRadius: radius.sm,
-                      borderWidth: 1,
-                      minHeight: 62,
-                      // Coach Board: selection is an action — amber tint plate,
-                      // bright amber label, verified pairs (contrast script).
-                      backgroundColor: selected ? colors.accentBg : colors.surface,
-                      borderColor: selected ? colors.accent : colors.rule,
-                    },
-                  ]}>
-                  <AppText variant="label" style={{ fontWeight: '600', color: selected ? colors.accentBright : colors.inkMuted }}>
-                    {meta.label}
-                  </AppText>
-                  <AppText variant="caption" style={{ fontSize: 11, color: selected ? colors.inkMuted : colors.inkSubtle }}>
-                    {meta.blurb}
-                  </AppText>
-                  {selected && (
-                    <Ionicons name="checkmark" size={12} color={colors.accent} />
-                  )}
-                </PressSurface>
-              );
-            })}
-          </View>
-        </View>
+        {/* Account category — expectation only; the backend verifies role */}
+        <AppText variant="label" style={{ color: colors.authInkMuted, marginBottom: spacing.xs }}>
+          Account category
+        </AppText>
+        <CategorySelector
+          categories={roleOrder.map((r) => ({ id: r as AuthCategory, label: roleMeta[r].label, blurb: roleMeta[r].blurb }))}
+          value={role as AuthCategory}
+          onChange={pickRole}
+          accessibilityHint="Pick what you expect to be. The gym verifies your actual role after sign-in."
+        />
+        <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.xs }}>
+          This is only what you expect to be. The gym verifies your actual role after sign-in.
+        </AppText>
 
         {/* Security note for staff roles */}
         {role !== 'member' && (
@@ -199,6 +157,7 @@ export default function LoginScreen() {
             onChangeText={setEmail}
             error={errors.email}
             leadingIcon="mail-outline"
+            accentColor={colors.authAccent}
             accessibilityHint={roleSummary}
           />
           <TextField
@@ -209,26 +168,18 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             error={errors.password}
             leadingIcon="lock-closed-outline"
+            accentColor={colors.authAccent}
           />
           <PressSurface accessibilityRole="button" onPress={forgot} scaleOnPress={false} style={{ alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center' }}>
-            <AppText variant="label" tone="accent">
+            <AppText variant="label" style={{ color: colors.authAccent }}>
               Forgot password?
             </AppText>
           </PressSurface>
         </View>
 
         {submitError && (
-          <View
-            accessibilityRole="alert"
-            style={{
-              marginTop: spacing.xs,
-              backgroundColor: colors.dangerBg,
-              borderRadius: radius.sm,
-              padding: spacing.sm,
-            }}>
-            <AppText variant="label" style={{ color: colors.dangerOnBg }}>
-              {submitError}
-            </AppText>
+          <View style={{ marginTop: spacing.xs }}>
+            <AuthErrorMessage message={submitError} />
           </View>
         )}
 
@@ -239,6 +190,7 @@ export default function LoginScreen() {
             loading={submitting}
             disabled={submitting}
             fullWidth
+            variant="primarySoft"
             onPress={onSubmit}
             accessibilityHint="Sign-in is not connected to a server in this preview."
           />
@@ -264,11 +216,13 @@ export default function LoginScreen() {
         <View
           style={{
             borderTopWidth: 1,
-            borderTopColor: colors.rule,
+            borderTopColor: colors.authRule,
             paddingTop: spacing.md,
           }}>
-          <AppText variant="bodyStrong">New to the gym?</AppText>
-          <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
+          <AppText variant="bodyStrong" style={{ color: colors.authInk }}>
+            New to the gym?
+          </AppText>
+          <AppText variant="label" style={{ color: colors.authInkMuted, marginTop: spacing['3xs'] }}>
             Members join online. Staff accounts are issued by the owner.
           </AppText>
           <View style={{ marginTop: spacing.sm }}>
@@ -288,8 +242,9 @@ export default function LoginScreen() {
         visible={previewOpen}
         onClose={() => setPreviewOpen(false)}
         title="Preview a workspace"
-        subtitle="Demo navigation only. Role-based access is enforced by the backend in Part 2.">
-        <AppText variant="label" tone="muted">
+        subtitle="Demo navigation only. Role-based access is enforced by the backend in Part 2."
+        surface="auth">
+        <AppText variant="label" style={{ color: colors.authInkMuted }}>
           No sign-in happened. These open read-only, sample-data versions of the role workspaces so every screen can be reviewed.
         </AppText>
         <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
@@ -309,22 +264,24 @@ export default function LoginScreen() {
                 padding: spacing.sm,
                 borderRadius: radius.sm,
                 borderWidth: 1,
-                borderColor: colors.rule,
-                backgroundColor: colors.surfaceAlt,
+                borderColor: colors.authRule,
+                backgroundColor: colors.authField,
                 minHeight: 60,
               }}>
-              <Ionicons name="business-outline" size={20} color={colors.inkMuted} />
+              <Ionicons name="business-outline" size={20} color={colors.authAccent} />
               <View style={{ flex: 1 }}>
-                <AppText variant="bodyStrong">{roleMeta[r].label}</AppText>
-                <AppText variant="caption" tone="muted">
+                <AppText variant="bodyStrong" style={{ color: colors.authInk }}>
+                  {roleMeta[r].label}
+                </AppText>
+                <AppText variant="caption" style={{ color: colors.authInkSubtle }}>
                   {openWorkspacePath(r).replace('/(', '').replace(')', '')} · demo data
                 </AppText>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={tokens.colors.inkSubtle} />
+              <Ionicons name="chevron-forward" size={16} color={colors.authInkSubtle} />
             </PressSurface>
           ))}
         </View>
-        <AppText variant="caption" tone="subtle" style={{ marginTop: spacing.sm }}>
+        <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.sm }}>
           Every workspace shows its role tag in the header and a Demo data badge on live numbers.
         </AppText>
       </ModalSheet>
@@ -334,11 +291,12 @@ export default function LoginScreen() {
         visible={recoverOpen}
         onClose={() => setRecoverOpen(false)}
         title="Forgot password"
-        subtitle="Secure recovery flow arrives in Part 2">
-        <AppText variant="body">
+        subtitle="Secure recovery flow arrives in Part 2"
+        surface="auth">
+        <AppText variant="body" style={{ color: colors.authInk }}>
           Passwords are not reset in this preview. The real flow uses a signed email step, rate limits and account recovery with the gym&apos;s help desk.
         </AppText>
-        <AppText variant="label" tone="muted" style={{ marginTop: spacing.xs }}>
+        <AppText variant="label" style={{ color: colors.authInkMuted, marginTop: spacing.xs }}>
           Members: talk to the reception desk. Staff: contact the Owner.
         </AppText>
       </ModalSheet>

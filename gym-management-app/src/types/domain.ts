@@ -14,6 +14,8 @@ export interface MembershipPlan {
   duration: PlanDuration;
   price: number; // display-only in Part 1; prices are server-authoritative later
   currency: string;
+  /** Demo-labelled plan description lines (additive, Part 1 demo content). */
+  highlights?: string[];
 }
 
 export type MembershipStatus = 'active' | 'expiring' | 'expired' | 'frozen' | 'pendingPayment';
