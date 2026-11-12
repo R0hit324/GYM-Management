@@ -175,7 +175,7 @@ export default function LoginScreen() {
               gap: spacing.xs,
               alignItems: 'flex-start',
             }}>
-            <Ionicons name="shield-checkmark-outline" size={18} color={colors.info} style={{ marginTop: 2 }} />
+            <Ionicons name="shield-checkmark-outline" size={18} color={colors.info} style={{ marginTop: spacing['3xs'] }} />
             <View style={{ flex: 1 }}>
               <AppText variant="caption" style={{ color: colors.infoOnBg }}>
                 {role === 'owner'

@@ -28,7 +28,7 @@ export type Tokens = {
 };
 
 /**
- * The design system ships dark-first ("Ember Night") in Part 1; the scheme
+ * The design system ships dark-first ("Coach Board") in Part 1; the scheme
  * parameter is kept so a derived light variant can be added later without
  * touching call sites.
  */

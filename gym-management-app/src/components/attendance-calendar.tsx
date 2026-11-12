@@ -4,7 +4,7 @@
  * One month at a time, seven columns starting on Sunday. Each day is a
  * square: paper when untrained, deepening green with each verified check-in
  * that day (green is semantic state — "you trained" — the only second hue
- * the Piste theme allows). Squares carry the meaning graphically; the
+ * the Coach Board theme allows). Squares carry the meaning graphically; the
  * caption and accessibility summary state the numbers in words.
  *
  * Month navigation: back through every month that has (or precedes) data,
@@ -140,7 +140,7 @@ export function AttendanceCalendar(props: {
             <Ionicons name="chevron-back" size={20} color={colors.ink} />
           </View>
         </PressSurface>
-        {/* Display type is never lowercase (Piste): the token uppercases. */}
+        {/* Display type is never lowercase (Coach Board): the token uppercases. */}
         <AppText variant="heading">
           {MONTHS[month.getMonth()]} {month.getFullYear()}
         </AppText>

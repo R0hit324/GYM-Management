@@ -15,7 +15,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { Easing, Motion } from '@/constants/theme';
+import { Easing, Motion, Spacing } from '@/constants/theme';
 import { IconButton } from '@/components/ui/button';
 import { AppText } from '@/components/ui/text';
 import { useTokens } from '@/hooks/use-tokens';
@@ -103,7 +103,7 @@ export function ModalSheet(props: {
                   {props.toneBadge}
                 </View>
                 {props.subtitle && (
-                  <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+                  <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
                     {props.subtitle}
                   </AppText>
                 )}
@@ -141,6 +141,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: Spacing.sm,
   },
 });

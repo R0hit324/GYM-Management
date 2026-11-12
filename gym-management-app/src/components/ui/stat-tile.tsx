@@ -25,7 +25,7 @@ export function DeltaPill({ delta }: { delta: StatDelta }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 2,
+        gap: spacing['3xs'],
         backgroundColor: bg,
         borderRadius: radius.pill,
         paddingVertical: 2,
@@ -72,7 +72,7 @@ export function StatTile(props: {
         borderColor: colors.rule,
         paddingVertical: spacing.sm,
         paddingHorizontal: spacing.md,
-        gap: 2,
+        gap: spacing['3xs'],
       }}>
       <AppText variant="figure" style={{ color: toneColor }}>
         {props.value}

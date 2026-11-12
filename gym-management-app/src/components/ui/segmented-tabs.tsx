@@ -109,13 +109,13 @@ export function FilterChip(props: {
         borderWidth: 1,
         borderColor: selected ? colors.accentDeep : colors.rule,
         backgroundColor: selected ? colors.accentDeep : colors.surface,
-        paddingVertical: 6,
+        paddingVertical: spacing.xs,
         paddingHorizontal: spacing.sm,
         minHeight: 34,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
-        gap: 6,
+        gap: spacing.xs,
       }}>
       {props.icon}
       <AppText variant="label" style={{ color: selected ? colors.accentInk : colors.inkMuted, fontWeight: selected ? '600' : '500' }}>

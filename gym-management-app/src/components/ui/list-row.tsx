@@ -34,7 +34,7 @@ export function ListRow(props: {
           {props.status}
         </View>
         {props.detail && (
-          <AppText variant="label" tone="muted" style={{ marginTop: 2 }} numberOfLines={1}>
+          <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }} numberOfLines={1}>
             {props.detail}
           </AppText>
         )}

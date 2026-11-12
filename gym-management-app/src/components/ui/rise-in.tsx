@@ -1,7 +1,7 @@
 /**
  * Entrance wrapper — a subtle fade-and-rise, once, on mount.
  *
- * Ember Night motion: smooth and subtle, never showy. Children fade in and
+ * Coach Board motion: smooth and subtle, never showy. Children fade in and
  * rise a few pixels (transform/opacity only, no layout shift) with a small
  * stagger by index. Reduce-motion collapses it to instant (no animation,
  * final state immediately). Kept as a wrapper so call sites stay stable.

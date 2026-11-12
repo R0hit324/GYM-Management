@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
+import { Spacing } from '@/constants/theme';
 import { useTokens } from '@/hooks/use-tokens';
 
 /**
@@ -168,6 +169,6 @@ const styles = StyleSheet.create({
   loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.xs,
   },
 });
