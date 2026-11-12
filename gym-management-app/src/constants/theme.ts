@@ -110,6 +110,42 @@ export const Colors = {
   authInkSubtle: '#858585', // captions, metadata (≥4.5:1 on panel + field)
   authHeadingMuted: '#8C8C8C', // muted half of two-tone headings
   authSelectedBg: '#1E1E1E', // selected category pill tint
+
+  // ---- Owner dashboard ("Fino for Pulse", owner sections only) --------
+  // Additive: dark charcoal ground, light content panel with a subtle dot
+  // pattern, solid white cards, restrained blue/violet accents, mint/amber/
+  // red status hues. Palette follows the approved owner spec (#101116 /
+  // #F7F8FC / #648BFF family). Scoped to owner sections; no existing token
+  // values change, so every other workspace is untouched.
+  ownerBg: '#101116', // main dark surface (dashboard ground)
+  ownerDarkElevated: '#1C1D24', // elevated dark surface (compact cards)
+  ownerPanelBg: '#F7F8FC', // light content background (dot pattern shows here)
+  ownerPanel: '#FFFFFF', // solid card surface on the light panel
+  ownerPanelMuted: '#EDF0F6', // light inner wells / segmented track
+  ownerDot: '#DDE2EC', // subtle dot-pattern colour on the light panel
+  ownerRule: '#E4E7EE', // hairlines on the light panel
+  ownerCard: '#1C1D24', // dark compact cards (week strip, dark ground)
+  ownerCardRule: '#2A2C35', // subtle border on dark cards
+  ownerInk: '#171923', // primary text on light surfaces
+  ownerInkMuted: '#656B78', // secondary text on light surfaces
+  ownerInkSubtle: '#5F6572', // captions on light (≥4.5:1 on white + panelBg)
+  ownerHeroInk: '#FFFFFF', // primary text on the dark ground
+  ownerHeroMuted: '#A5A9B5', // secondary text on the dark ground
+  ownerAccent: '#648BFF', // electric blue — icons/accents on the dark ground
+  ownerAccentDeep: '#3D5AF1', // AA-deep blue for text/icons on light surfaces
+  ownerAccentTint: '#EEF2FF', // pale blue tint (selected chips, icon wells)
+  ownerSuccess: '#36C995', // positive trend on dark surfaces
+  ownerSuccessDeep: '#0E7A57', // positive trend text on light surfaces
+  ownerWarning: '#F4B85B', // pending/attention on dark surfaces
+  ownerWarningDeep: '#B45309', // pending/attention text on light surfaces
+  ownerError: '#F06C76', // negative trend on dark surfaces
+  ownerErrorDeep: '#B91C1C', // negative trend text on light surfaces
+  ownerVioletDeep: '#6D28D9', // violet accent numerals on light surfaces
+  ownerCyanDeep: '#0E7490', // cyan accent numerals on light surfaces
+  ownerBlueSoft: '#33689F', // soft steel blue numerals on light surfaces
+  ownerGradA: '#A5C0FA', // restrained gradient start (pastel blue)
+  ownerGradB: '#C4B5FD', // restrained gradient end (pastel violet)
+  ownerGradInk: '#0A0A0A', // text on the pastel gradient
 } as const;
 
 export type ColorToken = keyof typeof Colors;

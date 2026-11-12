@@ -1,25 +1,20 @@
 /**
- * Owner workspace tabs: everyday report, lost member list.
+ * Owner workspace: overview dashboard, members, everyday report, lost
+ * members. Chrome moved from NativeTabs to the Fino-style floating
+ * OwnerBottomNavigation rendered per screen; the routes and every screen's
+ * content stay exactly as they were.
  */
-import { NativeTabs } from 'expo-router/native-tabs';
-import { useTokens } from '@/hooks/use-tokens';
+import { Stack } from 'expo-router';
+
+import { Colors } from '@/constants/theme';
 
 export default function OwnerLayout() {
-  const tokens = useTokens();
-  const { colors } = tokens;
   return (
-    <NativeTabs
-      backgroundColor={colors.paper}
-      tintColor={colors.accent}
-      labelStyle={{ selected: { color: colors.accent, fontWeight: '600' }, default: { color: colors.inkMuted } }}>
-      <NativeTabs.Trigger name="report">
-        <NativeTabs.Trigger.Label>Report</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="chart.bar" md="insights" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="lost">
-        <NativeTabs.Trigger.Label>Lost members</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="person.crop.circle.badge.exclamationmark" md="person_search" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.paper } }}>
+      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="members" />
+      <Stack.Screen name="report" />
+      <Stack.Screen name="lost" />
+    </Stack>
   );
 }

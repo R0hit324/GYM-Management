@@ -17,6 +17,8 @@ export function Screen(props: {
   children: ReactNode;
   scroll?: boolean;
   roleTag?: 'member' | 'reception' | 'owner';
+  /** Additive: extra bottom clearance for a floating navigation overlay. */
+  footerPadding?: number;
 }) {
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
@@ -25,7 +27,7 @@ export function Screen(props: {
   // Coach Board header: the shared PageHeader — one composition for every
   // screen; the role chip in the body carries workspace identity.
   const body = (
-    <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl + 24 }}>
+    <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl + (props.footerPadding ?? 24) }}>
       {props.children}
     </View>
   );
