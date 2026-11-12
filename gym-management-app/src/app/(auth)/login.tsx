@@ -1,5 +1,5 @@
 /**
- * Screen 1 â€” Login (shared, three role choices).
+ * Screen 1 — Login (shared, three role choices).
  *
  * Security position (enforced in Part 2, but stated here): the role chosen
  * on this screen is a UI expectation only. Authorisation is verified by the
@@ -96,14 +96,12 @@ export default function LoginScreen() {
               width: 52,
               height: 52,
               borderRadius: radius.md,
-              backgroundColor: colors.surfaceAlt,
-              borderWidth: 1,
-              borderColor: colors.rule,
+              backgroundColor: colors.accent,
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: spacing.sm,
             }}>
-            <Ionicons name="barbell" size={28} color={colors.accent} />
+            <Ionicons name="barbell" size={28} color={colors.accentInk} />
           </View>
           <AppText variant="displayXL">
             Pulse <AppText variant="displayXL" style={{ color: colors.accent }}>Gym</AppText>
@@ -116,7 +114,7 @@ export default function LoginScreen() {
         {/* Role selector */}
         <View accessibilityLabel="Account type. Your role is verified by the gym after sign-in.">
           <AppText variant="heading">Sign in as</AppText>
-          <AppText variant="caption" tone="muted" style={{ marginTop: 2 }}>
+          <AppText variant="caption" tone="muted" style={{ marginTop: spacing['3xs'] }}>
             Pick what you expect to be. The gym verifies your actual role after sign-in.
           </AppText>
           <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
@@ -139,19 +137,21 @@ export default function LoginScreen() {
                       flex: 1,
                       justifyContent: 'center',
                       alignItems: 'center',
-                      gap: 2,
+                      gap: spacing['3xs'],
                       paddingVertical: spacing.sm,
                       borderRadius: radius.sm,
                       borderWidth: 1,
                       minHeight: 62,
-                      backgroundColor: selected ? colors.surfaceAlt : colors.surface,
+                      // Coach Board: selection is an action — amber tint plate,
+                      // bright amber label, verified pairs (contrast script).
+                      backgroundColor: selected ? colors.accentBg : colors.surface,
                       borderColor: selected ? colors.accent : colors.rule,
                     },
                   ]}>
-                  <AppText variant="label" style={{ fontWeight: '600', color: selected ? colors.ink : colors.inkMuted }}>
+                  <AppText variant="label" style={{ fontWeight: '600', color: selected ? colors.accentBright : colors.inkMuted }}>
                     {meta.label}
                   </AppText>
-                  <AppText variant="caption" tone={selected ? 'muted' : 'subtle'} style={{ fontSize: 11 }}>
+                  <AppText variant="caption" style={{ fontSize: 11, color: selected ? colors.inkMuted : colors.inkSubtle }}>
                     {meta.blurb}
                   </AppText>
                   {selected && (
@@ -268,7 +268,7 @@ export default function LoginScreen() {
             paddingTop: spacing.md,
           }}>
           <AppText variant="bodyStrong">New to the gym?</AppText>
-          <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+          <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
             Members join online. Staff accounts are issued by the owner.
           </AppText>
           <View style={{ marginTop: spacing.sm }}>
@@ -317,7 +317,7 @@ export default function LoginScreen() {
               <View style={{ flex: 1 }}>
                 <AppText variant="bodyStrong">{roleMeta[r].label}</AppText>
                 <AppText variant="caption" tone="muted">
-                  {openWorkspacePath(r).replace('/(', '').replace(')', '')} Â· demo data
+                  {openWorkspacePath(r).replace('/(', '').replace(')', '')} · demo data
                 </AppText>
               </View>
               <Ionicons name="chevron-forward" size={16} color={tokens.colors.inkSubtle} />

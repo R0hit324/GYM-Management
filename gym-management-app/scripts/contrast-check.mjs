@@ -77,6 +77,7 @@ const pairs = [
   ['accentInk', 'accentDeep', 4.5, 'selected pill/chip label (dark on deep amber)'],
   ['inkInverse', 'accent', 4.5, 'dark label on amber fills'],
   ['accentBright', 'accentBg', 4.5, 'badge text on amber tint'],
+  ['inkMuted', 'accentBg', 4.5, 'selected role card blurb on amber tint'],
   // Danger keeps its white label on the red fill.
   ['ink', 'dangerStrong', 4.5, 'danger button label (white on red)'],
   ['accent', 'paper', 4.5, 'figures and accent text on ground'],

@@ -19,6 +19,7 @@ import { TextField } from '@/components/ui/text-field';
 import { OtpInput } from '@/components/ui/otp-input';
 import { Card, Divider, Well } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { StepDots } from '@/components/ui/step-dots';
 import { PressSurface } from '@/components/ui/press-surface';
 import { RiseIn } from '@/components/ui/rise-in';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,7 +81,7 @@ export default function JoinScreen() {
         <AppText variant="display" style={{ marginTop: spacing.xs }}>
           {step === 0 ? 'Join the gym' : step === 1 ? 'Verify it is you' : 'Review and submit'}
         </AppText>
-        <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+        <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
           {step === 0
             ? 'A few details and the plan you want.'
             : step === 1
@@ -88,21 +89,9 @@ export default function JoinScreen() {
               : 'Check everything, then submit for the owner to review.'}
         </AppText>
 
-        {/* Step indicator */}
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.md }}>
-          {STEPS.map((label, i) => (
-            <View key={label} style={{ flex: 1, gap: 4 }}>
-              <View
-                style={{
-                  height: 3,
-                  backgroundColor: i <= step ? colors.accent : colors.rule,
-                }}
-              />
-              <AppText variant="caption" tone={i <= step ? 'accent' : 'subtle'} style={{ fontWeight: i === step ? '600' : '400' }}>
-                {label}
-              </AppText>
-            </View>
-          ))}
+        {/* Step indicator: numbered circles (StepDots) */}
+        <View style={{ marginTop: spacing.md }}>
+          <StepDots steps={STEPS} current={step} />
         </View>
 
         {step === 0 && (
@@ -209,7 +198,7 @@ export default function JoinScreen() {
                 <AppText variant="heading">Phone code</AppText>
                 <StatusBadge label="Not connected yet" tone="warning" small />
               </View>
-              <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+              <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
                 6 digits sent to {phone || 'your number'}.
               </AppText>
               <View style={{ marginTop: spacing.sm }}>
@@ -244,7 +233,7 @@ export default function JoinScreen() {
                 <AppText variant="heading">Email link</AppText>
                 <StatusBadge label="Not connected yet" tone="warning" small />
               </View>
-              <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+              <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
                 A verification link would go to {email || 'your email'}.
               </AppText>
               <Well style={{ marginTop: spacing.sm }}>

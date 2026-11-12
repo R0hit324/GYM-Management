@@ -1,9 +1,10 @@
 /**
- * Splash. Brand entry per the reference: ember dumbbell mark, Pulse Gym
- * wordmark and tagline on the near-black ground. It holds briefly and hands
- * off to the login screen — with no backend, login remains the only real
- * destination (role routing arrives with auth in Part 2). The delay is a
- * brand hold, not a fake loading claim.
+ * Splash. Brand entry per the Coach Board direction: the ONE amber plate —
+ * dark dumbbell mark on the accent fill — above the Pulse Gym wordmark and
+ * tagline on the graphite ground. It holds briefly and hands off to the
+ * login screen — with no backend, login remains the only real destination
+ * (role routing arrives with auth in Part 2). The delay is a brand hold,
+ * not a fake loading claim.
  */
 import { useEffect } from 'react';
 import { View } from 'react-native';
@@ -11,6 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 
 import { AppText } from '@/components/ui/text';
+import { RiseIn } from '@/components/ui/rise-in';
 import { useTokens } from '@/hooks/use-tokens';
 
 export default function Index() {
@@ -32,30 +34,32 @@ export default function Index() {
         paddingTop: 0,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.md,
+        gap: spacing.lg,
       }}>
-      {/* Ember brand mark */}
-      <View
-        style={{
-          width: 84,
-          height: 84,
-          borderRadius: radius.lg,
-          backgroundColor: colors.surfaceAlt,
-          borderWidth: 1,
-          borderColor: colors.rule,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-        <Ionicons name="barbell" size={44} color={colors.accent} />
-      </View>
-      <View style={{ alignItems: 'center', gap: spacing.xs }}>
-        <AppText variant="displayXL">
-          Pulse <AppText variant="displayXL" style={{ color: colors.accent }}>Gym</AppText>
-        </AppText>
-        <AppText variant="label" tone="muted">
-          Membership and Daily Operations
-        </AppText>
-      </View>
+      {/* Coach Board hero: the one amber plate, dark mark on the accent fill */}
+      <RiseIn>
+        <View
+          style={{
+            width: 84,
+            height: 84,
+            borderRadius: radius.lg,
+            backgroundColor: colors.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Ionicons name="barbell" size={44} color={colors.accentInk} />
+        </View>
+      </RiseIn>
+      <RiseIn index={2}>
+        <View style={{ alignItems: 'center', gap: spacing.xs }}>
+          <AppText variant="displayXL">
+            Pulse <AppText variant="displayXL" style={{ color: colors.accent }}>Gym</AppText>
+          </AppText>
+          <AppText variant="label" tone="muted">
+            Membership and Daily Operations
+          </AppText>
+        </View>
+      </RiseIn>
     </View>
   );
 }
