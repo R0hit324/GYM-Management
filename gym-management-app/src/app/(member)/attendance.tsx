@@ -6,10 +6,10 @@
  * server validation arrive in Part 5. The status switcher below is an
  * explicitly-labelled review control, not a simulation of a successful scan.
  *
- * Ember Night layout: a member-dashboard composition — greeting header,
- * membership card, quick shortcuts that scroll to their sections, the
- * scanner, the training calendar and the visit register. All data shown is
- * demo data and stays labelled as such.
+ * Coach Board layout: a member-dashboard composition — greeting header on
+ * the unified PageHeader rhythm, membership card, ActionTile shortcuts that
+ * scroll to their sections, the scanner, the training calendar and the
+ * visit register. All data shown is demo data and stays labelled as such.
  */
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
-import { Card, Well } from '@/components/ui/card';
+import { Card, Section, Well } from '@/components/ui/card';
+import { ActionGrid, ActionTile } from '@/components/ui/action-tile';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { ListGroup, ListRow, RowDivider, MemberAvatar } from '@/components/ui/list-row';
@@ -149,13 +150,13 @@ export default function MemberAttendanceScreen() {
             width: 44,
             height: 44,
             borderRadius: radius.pill,
-            backgroundColor: colors.surfaceAlt,
+            backgroundColor: colors.accentBg,
             borderWidth: 1,
             borderColor: colors.rule,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <Ionicons name="person" size={22} color={colors.accent} />
+          <Ionicons name="person" size={22} color={colors.accentBright} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }}>
@@ -194,7 +195,7 @@ export default function MemberAttendanceScreen() {
               alignItems: 'center',
               gap: spacing.sm,
             }}>
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: spacing['3xs'] }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                 <AppText variant="label" tone="muted">
                   My Membership
@@ -214,25 +215,25 @@ export default function MemberAttendanceScreen() {
           </View>
         </RiseIn>
 
-        {/* Quick shortcuts — scroll to the matching section */}
+        {/* Quick shortcuts — ActionTile grid, scroll to the matching section */}
         <RiseIn index={1}>
-          <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
+          <ActionGrid style={{ marginTop: spacing.sm }}>
             {([
               { key: 'scan', icon: 'scan-outline' as const, label: 'Attendance' },
               { key: 'plan', icon: 'card-outline' as const, label: 'My Plan' },
               { key: 'progress', icon: 'stats-chart' as const, label: 'Progress' },
             ] as { key: JumpKey; icon: keyof typeof Ionicons.glyphMap; label: string }[]).map((tile) => (
-              <Button
+              <ActionTile
                 key={tile.key}
-                label={tile.label}
                 icon={tile.icon}
-                variant="secondary"
-                size="small"
+                label={tile.label}
+                tone="accent"
                 onPress={() => jump(tile.key)}
-                style={{ flex: 1 }}
+                accessibilityHint="Scrolls to the matching section below"
+                style={{ flex: 1, minWidth: 96 }}
               />
             ))}
-          </View>
+          </ActionGrid>
         </RiseIn>
 
         {/* This-week activity (computed from demo check-ins) */}
@@ -249,10 +250,10 @@ export default function MemberAttendanceScreen() {
               padding: spacing.md,
               gap: spacing.xs,
             }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
               <AppText variant="bodyStrong">This Week</AppText>
-              <AppText variant="label" style={{ color: colors.accent }}>
-                {weekStats.trained}/{weekStats.elapsed} Days
+              <AppText variant="figureSmall" style={{ color: colors.accent }}>
+                {weekStats.trained}/{weekStats.elapsed}
               </AppText>
             </View>
             <View style={{ height: 6, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' }}>
@@ -297,7 +298,7 @@ export default function MemberAttendanceScreen() {
                   borderStyle: 'dashed',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
+                  gap: spacing.xs,
                 }}>
                 <Ionicons
                   name={state === 'success' ? 'checkmark-circle' : state === 'ready' ? 'scan-outline' : 'warning-outline'}
@@ -323,7 +324,7 @@ export default function MemberAttendanceScreen() {
                 <AppText variant="caption" tone="subtle">
                   Review control, removed when the camera lands:
                 </AppText>
-                <View style={{ marginTop: 6 }}>
+                <View style={{ marginTop: spacing['3xs'] }}>
                   <SegmentedTabs
                     size="small"
                     options={scanStates.map((s) => ({ value: s.value, label: s.label }))}
@@ -340,7 +341,7 @@ export default function MemberAttendanceScreen() {
         <RiseIn index={4}>
           <Well style={{ marginTop: spacing.md }}>
             <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start' }}>
-              <Ionicons name="camera-outline" size={18} color={colors.inkMuted} style={{ marginTop: 1 }} />
+              <Ionicons name="camera-outline" size={18} color={colors.inkMuted} style={{ marginTop: spacing['3xs'] }} />
               <View style={{ flex: 1 }}>
                 <AppText variant="label" tone="muted">
                   Camera permission belongs to the scanner. This preview does not open the camera; Part 5 requests permission with a plain-language reason.
@@ -357,22 +358,23 @@ export default function MemberAttendanceScreen() {
               sectionY.current.progress = e.nativeEvent.layout.y;
             }}
             style={{ marginTop: spacing.xl }}>
-            <AppText variant="heading">Training calendar</AppText>
-            <AttendanceCalendar events={calendarEvents} />
+            <Section title="Training calendar" style={{ marginTop: 0 }}>
+              <AttendanceCalendar events={calendarEvents} />
+            </Section>
           </View>
         </RiseIn>
 
         {/* Attendance history */}
         <View style={{ marginTop: spacing.xl }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <AppText variant="heading">My visits</AppText>
+          <Section title="My visits" style={{ marginTop: 0 }} action={
             <Button
               label={history ? 'Hide' : 'Show'}
               size="small"
               variant="ghost"
               onPress={() => setHistory((h) => !h)}
             />
-          </View>        {history &&
+          }>
+          {history &&
             (listState === 'loading' ? (
               <Card padded>
                 <RowsSkeleton count={2} />
@@ -380,12 +382,12 @@ export default function MemberAttendanceScreen() {
             ) : listState === 'error' ? (
               <ErrorCard onRetry={() => setListState('full')} />
             ) : myEvents.length === 0 || listState === 'empty' ? (
-              <Card padded style={{ marginTop: spacing.sm }}>
+              <Card padded>
                 <AppText variant="bodyStrong">No visits yet</AppText>
-                <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+                <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
                   Your first check-in will appear here. Plan a session and scan at the door.
                 </AppText>
-                <Button label="Plan your first session" size="small" variant="secondary" style={{ alignSelf: 'flex-start', marginTop: 8 }} />
+                <Button label="Plan your first session" size="small" variant="secondary" style={{ alignSelf: 'flex-start', marginTop: spacing.xs }} />
               </Card>
             ) : (
               <RiseIn index={6}>
@@ -411,42 +413,43 @@ export default function MemberAttendanceScreen() {
               </RiseIn>
             ))}
           {!history && listState !== 'loading' && (
-            <AppText variant="caption" tone="subtle" style={{ marginTop: 6 }}>
+            <AppText variant="caption" tone="subtle" style={{ marginTop: spacing.xs }}>
               History hidden. Check-ins per day are allowed more than once; each scan is its own register row.
             </AppText>
           )}
-        </View>
+          </Section>
 
-        {/* List state review control (loading, empty, error are designed). */}
-        {!history && listState !== 'loading' && (
-          <View style={{ marginTop: spacing.sm }}>
-            <AppText variant="caption" tone="subtle">
-              Review control for the visit list:
-            </AppText>
-            <View style={{ marginTop: 6 }}>
-              <SegmentedTabs
-                size="small"
-                options={[
-                  { value: 'full', label: 'Full' },
-                  { value: 'empty', label: 'Empty' },
-                  { value: 'error', label: 'Error' },
-                ]}
-                value={listState}
-                onChange={(v) => setListState(v as typeof listState)}
-              />
+          {/* List state review control (loading, empty, error are designed). */}
+          {!history && listState !== 'loading' && (
+            <View style={{ marginTop: spacing.sm }}>
+              <AppText variant="caption" tone="subtle">
+                Review control for the visit list:
+              </AppText>
+              <View style={{ marginTop: spacing['3xs'] }}>
+                <SegmentedTabs
+                  size="small"
+                  options={[
+                    { value: 'full', label: 'Full' },
+                    { value: 'empty', label: 'Empty' },
+                    { value: 'error', label: 'Error' },
+                  ]}
+                  value={listState}
+                  onChange={(v) => setListState(v as typeof listState)}
+                />
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
-        {/* Empty state preview */}
-        {!history && (
-          <Card style={{ marginTop: spacing.md }} padded>
-            <AppText variant="label" tone="muted">
-              No visits on the register yet? The member list opens with an empty state and one action: plan your first session.
-            </AppText>
-            <EmptyRow />
-          </Card>
-        )}
+          {/* Empty state preview */}
+          {!history && (
+            <Card style={{ marginTop: spacing.md }} padded>
+              <AppText variant="label" tone="muted">
+                No visits on the register yet? The member list opens with an empty state and one action: plan your first session.
+              </AppText>
+              <EmptyRow />
+            </Card>
+          )}
+        </View>
 
         <AppText variant="caption" tone="subtle" align="center" style={{ marginTop: spacing.lg }}>
           A member is flagged inactive after 30 days without a recorded check-in. Scans, tokens and attendance writes are server-side (Part 5).
@@ -476,7 +479,7 @@ function RowsSkeleton({ count }: { count: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <View key={i} style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }} />
-          <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ flex: 1, gap: spacing.xs }}>
             <View style={{ height: 12, width: '45%', borderRadius: radius.xs, backgroundColor: colors.surfaceAlt }} />
             <View style={{ height: 10, width: '70%', borderRadius: radius.xs, backgroundColor: colors.surfaceAlt }} />
           </View>
@@ -519,7 +522,7 @@ function EmptyRow() {
         style={{
           flex: 1,
           alignItems: 'center',
-          gap: 4,
+          gap: spacing['3xs'],
           paddingVertical: spacing.sm,
           backgroundColor: colors.surfaceAlt,
           borderRadius: radius.sm,
