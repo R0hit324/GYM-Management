@@ -8,9 +8,11 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { Screen } from '@/components/scaffold';import { AppText } from '@/components/ui/text';
+import { Screen } from '@/components/scaffold';
+import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Section } from '@/components/ui/card';
+import { StatRow, StatTile } from '@/components/ui/stat-tile';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { SearchBar } from '@/components/ui/search-bar';
@@ -41,6 +43,21 @@ export default function RenewalsScreen() {
   const [contactOpen, setContactOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
+  // Bucket counts for the KPI row — computed from the demo member records,
+  // same rules as the list filters below. Never asserted.
+  const buckets = useMemo(() => {
+    let expiring = 0;
+    let expired = 0;
+    let frozen = 0;
+    for (const m of demoMembers) {
+      if (m.status === 'frozen') frozen++;
+      const end = m.membershipEnd ? daysBetween(m.membershipEnd) : null;
+      if (end !== null && end >= 0 && end <= 7) expiring++;
+      else if (end !== null && end < 0) expired++;
+    }
+    return { expiring, expired, frozen };
+  }, []);
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return demoMembers
@@ -64,7 +81,16 @@ export default function RenewalsScreen() {
       actions={<SignOut />}>
       <WorkspaceMeta role="reception" demo />
 
+      {/* KPI row: bucket sizes, computed from the demo records (audit #7) */}
       <RiseIn style={{ marginTop: spacing.md }}>
+        <StatRow>
+          <StatTile label="Expiring in 7 days" value={String(buckets.expiring)} tone="accent" />
+          <StatTile label="Expired" value={String(buckets.expired)} tone="danger" />
+          <StatTile label="Frozen" value={String(buckets.frozen)} tone="info" />
+        </StatRow>
+      </RiseIn>
+
+      <RiseIn style={{ marginTop: spacing.sm }}>
         <SearchBar label="Search renewal members" value={query} onChange={setQuery} placeholder="Name or member ID" />
         <View style={{ marginTop: spacing.xs }}>
           <SegmentedTabs size="small" options={filters} value={filter} onChange={setFilter} />
@@ -233,7 +259,7 @@ function RowLine(props: { tone: 'warning' | 'danger' | 'info'; title: string; bo
       <View style={{ width: 3, backgroundColor: color }} />
       <View style={{ flex: 1 }}>
         <AppText variant="bodyStrong">{props.title}</AppText>
-        <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+        <AppText variant="label" tone="muted" style={{ marginTop: tokens.spacing['3xs'] }}>
           {props.body}
         </AppText>
       </View>

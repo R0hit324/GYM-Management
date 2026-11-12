@@ -218,7 +218,7 @@ export default function FeesEntryScreen() {
                     <AppText variant="bodyStrong">Gym UPI QR</AppText>
                     <Button label="Show QR" size="small" variant="secondary" icon="qr-code-outline" onPress={() => setUpiOpen(true)} />
                   </View>
-                  <AppText variant="caption" tone="muted" style={{ marginTop: 2 }}>
+                  <AppText variant="caption" tone="muted" style={{ marginTop: spacing['3xs'] }}>
                     Member pays {formatCurrency(payable)} into {demoGymName}&apos;s {demoGymUpiId}.
                   </AppText>
                   <View style={{ marginTop: spacing.sm }}>
@@ -243,7 +243,7 @@ export default function FeesEntryScreen() {
                     onPress={noop}
                     style={{ marginTop: spacing.xs, alignSelf: 'flex-start' }}
                   />
-                  <AppText variant="caption" tone="subtle" style={{ marginTop: 4 }}>
+                  <AppText variant="caption" tone="subtle" style={{ marginTop: spacing.xxs }}>
                     Evidence is stored privately; replacing or deleting it is restricted once submitted.
                   </AppText>
                 </Card>
@@ -286,7 +286,7 @@ export default function FeesEntryScreen() {
               ))}
             </ListGroup>
           )}
-          <AppText variant="caption" tone="muted" style={{ marginTop: 6 }}>
+          <AppText variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
             Awaiting-check entries never activate membership and never read as verified.
           </AppText>
         </Section>
@@ -344,14 +344,14 @@ function MethodOption(props: { label: string; selected: boolean; icon: keyof typ
         minHeight: 52,
         borderRadius: radius.sm,
         borderWidth: 1,
-        borderColor: props.selected ? colors.accentDeep : colors.rule,
-        backgroundColor: props.selected ? colors.accentDeep : colors.surface,
+        borderColor: props.selected ? colors.accent : colors.rule,
+        backgroundColor: props.selected ? colors.accent : colors.surface,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: spacing.xs,
       }}>
-      <Ionicons name={props.icon} size={18} color={props.selected ? colors.accent : colors.inkMuted} />
+      <Ionicons name={props.icon} size={18} color={props.selected ? colors.accentInk : colors.inkMuted} />
       <AppText
         variant="label"
         style={{ color: props.selected ? colors.accentInk : colors.ink, fontWeight: props.selected ? '600' : '500' }}>

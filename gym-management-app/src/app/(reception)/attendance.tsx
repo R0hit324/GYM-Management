@@ -11,9 +11,9 @@ import { View } from 'react-native';
 
 import { Screen } from '@/components/scaffold';
 import { AppText } from '@/components/ui/text';
-import { Button } from '@/components/ui/button';
 import { Card, Section } from '@/components/ui/card';
 import { StatRow, StatTile } from '@/components/ui/stat-tile';
+import { ActionGrid, ActionTile } from '@/components/ui/action-tile';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { SearchBar } from '@/components/ui/search-bar';
@@ -24,7 +24,8 @@ import { EmptyState } from '@/components/ui/feedback';
 import { RiseIn } from '@/components/ui/rise-in';
 import { WorkspaceMeta, SignOut } from '@/components/workspace-meta';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoAttendance, demoAttendanceTrend, demoAttendanceQrPayload } from '@/data/demo';
+import { router } from 'expo-router';
+import { demoAttendance, demoAttendanceTrend, demoAttendanceQrPayload, demoPayments } from '@/data/demo';
 import { formatTime, pluralise } from '@/utils/format';
 
 const filters = [
@@ -54,6 +55,8 @@ export default function ReceptionAttendanceScreen() {
 
   const checkIns = demoAttendance.filter((e) => e.status !== 'failed').length;
   const unique = new Set(demoAttendance.filter((e) => e.status !== 'failed').map((e) => e.memberId)).size;
+  // Real count from the demo payment queue — drives the Fees tile badge.
+  const pendingFees = demoPayments.filter((p) => p.state === 'awaitingVerification').length;
 
   return (
     <Screen
@@ -72,17 +75,37 @@ export default function ReceptionAttendanceScreen() {
       </RiseIn>
 
       <RiseIn index={1} style={{ marginTop: spacing.sm }}>
-        <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Button
-            label="Show attendance QR"
+        {/* Coach Board quick actions: the door QR plus deep-links into the
+            two sibling workspaces (existing routes, no new screens). */}
+        <ActionGrid>
+          <ActionTile
             icon="qr-code-outline"
-            variant="secondary"
+            label="Attendance QR"
+            tone="accent"
+            badge="Door"
             onPress={() => setQrOpen(true)}
+            accessibilityHint="Opens the demo attendance QR the door displays"
+            style={{ flex: 1, minWidth: 104 }}
           />
-          <AppText variant="caption" tone="muted" style={{ flexShrink: 1 }}>
-            Displayed at the door; rotates every 45 seconds in production.
-          </AppText>
-        </View>
+          <ActionTile
+            icon="cash-outline"
+            label="Fees entry"
+            badge={pendingFees > 0 ? String(pendingFees) : undefined}
+            onPress={() => router.push('/(reception)/fees')}
+            accessibilityHint="Opens the fees entry workspace tab"
+            style={{ flex: 1, minWidth: 104 }}
+          />
+          <ActionTile
+            icon="calendar-clear-outline"
+            label="Renewals"
+            onPress={() => router.push('/(reception)/renewals')}
+            accessibilityHint="Opens the renewals workspace tab"
+            style={{ flex: 1, minWidth: 104 }}
+          />
+        </ActionGrid>
+        <AppText variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
+          The QR is displayed at the door; it rotates every 45 seconds in production.
+        </AppText>
       </RiseIn>
 
       <RiseIn index={2}>
@@ -146,7 +169,7 @@ export default function ReceptionAttendanceScreen() {
         <RiseIn index={4}>
           <Card padded>
             <SimpleSparkline values={demoAttendanceTrend.map((t) => t.value)} labels={demoAttendanceTrend.map((t) => t.label)} />
-            <AppText variant="caption" tone="muted" style={{ marginTop: 6 }}>
+            <AppText variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
               Sessions per day, last 7 days, demo data.
             </AppText>
           </Card>
@@ -181,9 +204,11 @@ export default function ReceptionAttendanceScreen() {
 }
 
 function CheckLine(props: { text: string }) {
+  const tokens = useTokens();
+  const { spacing } = tokens;
   return (
-    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-      <AppText variant="label" tone="accent" style={{ marginTop: -1 }}>
+    <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start' }}>
+      <AppText variant="label" tone="accent" style={{ marginTop: spacing['3xs'] * -1 }}>
         ·
       </AppText>
       <AppText variant="label" tone="muted" style={{ flex: 1 }}>
@@ -201,7 +226,7 @@ function SimpleSparkline({ values, labels }: { values: number[]; labels: string[
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xxs, height: 64 }}>
       {values.map((v, i) => (
-        <View key={i} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+        <View key={i} style={{ flex: 1, alignItems: 'center', gap: spacing['3xs'] }}>
           <AppText variant="caption" tone="muted" style={{ fontSize: 10 }}>
             {v}
           </AppText>
