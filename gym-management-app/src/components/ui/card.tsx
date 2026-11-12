@@ -9,12 +9,17 @@ import type { ReactNode } from 'react';
 import { AppText } from '@/components/ui/text';
 import { useTokens } from '@/hooks/use-tokens';
 
-export function Section(props: { title?: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Section(props: { title?: string; action?: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const tokens = useTokens();
   const { spacing } = tokens;
   return (
     <View style={[{ marginTop: spacing.lg, gap: spacing.sm }, props.style]}>
-      {props.title && <AppText variant="heading">{props.title}</AppText>}
+      {(props.title || props.action) && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+          {props.title && <AppText variant="heading">{props.title}</AppText>}
+          {props.action}
+        </View>
+      )}
       {props.children}
     </View>
   );
@@ -33,8 +38,8 @@ export function Card(props: {
     <View
       style={[
         {
-          // Ember Night: charcoal surface with a subtle border and controlled
-          // shadow; `elevated` opts into the deeper shadow.
+          // Coach Board: graphite surface with a hairline border; `elevated`
+          // opts into the deeper shadow. Hairline or shadow, never both.
           backgroundColor: colors.surface,
           borderRadius: radius.md,
           borderWidth: 1,

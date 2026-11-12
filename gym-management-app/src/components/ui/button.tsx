@@ -50,13 +50,14 @@ export function Button(
   const { colors, spacing, radius } = tokens;
 
   const palette: Record<ButtonVariant, { bg?: string; fg: string; border?: string; borderWidth?: number }> = {
-    // Ember Night: the medium primary is the vibrant ember fill (its label is
-    // large text — 19px condensed 800 — so white passes at 3:1); small filled
-    // buttons use the deeper ember to pass 4.5:1 at any size.
-    primary: { bg: size === 'medium' ? colors.accent : colors.accentDeep, fg: colors.accentInk },
+    // Coach Board: the primary is the one amber fill at every size, and its
+    // label is the dark ink (verified ≥4.5:1 at any size — no more
+    // deeper-shade trick for small buttons).
+    primary: { bg: colors.accent, fg: colors.accentInk },
     secondary: { fg: colors.ink, border: colors.ruleStrong, borderWidth: 1 },
     ghost: { fg: colors.accentBright },
-    danger: { bg: colors.dangerStrong, fg: colors.accentInk },
+    // Danger fills keep a white label; the dark accentInk would fail on red.
+    danger: { bg: colors.dangerStrong, fg: colors.ink },
     onAccent: { fg: colors.accentInk, border: colors.accentInk },
   };
 
@@ -79,7 +80,7 @@ export function Button(
   };
 
   const rootStyle: StyleProp<ViewStyle> = [fullWidth && { alignSelf: 'stretch' }, style];
-  // Piste buttons: Barlow Condensed 800 in capitals, untracked.
+  // Coach Board buttons: Barlow Condensed 800 in title case, untracked.
   const typeToken = size === 'medium' ? tokens.type.button : tokens.type.buttonSmall;
   const textSizeStyle: StyleProp<TextStyle> = {
     ...typeToken,

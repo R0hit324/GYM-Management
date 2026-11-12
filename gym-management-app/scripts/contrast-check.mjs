@@ -1,16 +1,12 @@
 /**
- * WCAG 2.1 contrast verification for the "Ember Night" palette (v4).
+ * WCAG 2.1 contrast verification for the "Coach Board" palette (v5).
  *
- * Premium dark theme per the user's 8-screen reference image: near-black
- * ground, charcoal surfaces, one ember orange for brand/action, white and
- * muted-grey type, semantic green/amber/red state colours. All values are
+ * Approved V5 direction (docs/REDESIGN_V5_AUDIT.md, direction C): layered
+ * graphite ground/cards, one amber-orange reserved for actions, data
+ * highlights and deltas. Amber fills carry the dark ink label (verified
+ * ≥4.5:1 at any size); danger fills keep a white label. All values are
  * declared in src/constants/theme.ts; this script verifies every
  * foreground/background pair the app uses.
- *
- * Note on button labels: filled buttons use Barlow Condensed 800 at 19px
- * (≥ the 18.66px bold large-text floor), so white-on-ember is verified at
- * the 3:1 large-text threshold; small filled buttons use accentDeep /
- * dangerStrong, which pass 4.5:1 at any size.
  *
  * Run: node scripts/contrast-check.mjs
  */
@@ -29,16 +25,18 @@ function ratio(fg, bg) {
 }
 
 const T = {
-  paper: '#0B0C0E',
-  surface: '#15171B',
-  surfaceAlt: '#1D2025',
-  ink: '#F4F6F8',
-  inkMuted: '#A6ACB4',
-  inkSubtle: '#7B828B',
-  accent: '#EE6A0C',
-  accentInk: '#FFFFFF',
-  accentDeep: '#C2410C',
+  paper: '#101114',
+  surface: '#17181C',
+  surfaceAlt: '#1E2025',
+  ink: '#F4F5F7',
+  inkMuted: '#A0A6AE',
+  inkSubtle: '#80868E',
+  inkInverse: '#141519',
+  accent: '#F59E0B',
+  accentInk: '#141519',
+  accentDeep: '#D97706',
   accentBright: '#FDBA74',
+  accentBg: '#38260D',
   success: '#4ADE80',
   successBg: '#12291B',
   successOnBg: '#4ADE80',
@@ -46,18 +44,18 @@ const T = {
   warningBg: '#2E2410',
   warningOnBg: '#FBBF24',
   danger: '#F87171',
-  dangerStrong: '#DC2626',
+  dangerStrong: '#C81E1E',
   dangerBg: '#2B1416',
   dangerOnBg: '#F87171',
   info: '#8FBCFF',
   infoBg: '#14263D',
   infoOnBg: '#8FBCFF',
-  roleMemberBg: '#331D0E',
+  roleMemberBg: '#38260D',
   roleMemberOnBg: '#FDBA74',
-  roleReceptionBg: '#26292F',
+  roleReceptionBg: '#2A2D33',
   roleReceptionOnBg: '#C8CDD4',
-  roleOwnerBg: '#F4F6F8',
-  roleOwnerOnBg: '#0B0C0E',
+  roleOwnerBg: '#F4F5F7',
+  roleOwnerOnBg: '#141519',
   heat1: '#1C4A2A',
   heat2: '#237A3B',
   heat3: '#2EA043',
@@ -74,9 +72,13 @@ const pairs = [
   ['inkMuted', 'surfaceAlt', 4.5, 'secondary text on wells'],
   ['inkSubtle', 'paper', 4.5, 'captions on ground'],
   ['inkSubtle', 'surface', 4.5, 'captions on cards'],
-  ['accentInk', 'accent', 3.0, 'primary button label (large text: 19px condensed 800)'],
-  ['accentInk', 'accentDeep', 4.5, 'small filled button label (any size)'],
-  ['accentInk', 'dangerStrong', 4.5, 'danger button label (any size)'],
+  // Amber fills carry the dark label at any size; pressed accent too.
+  ['accentInk', 'accent', 4.5, 'primary button label (dark on amber)'],
+  ['accentInk', 'accentDeep', 4.5, 'selected pill/chip label (dark on deep amber)'],
+  ['inkInverse', 'accent', 4.5, 'dark label on amber fills'],
+  ['accentBright', 'accentBg', 4.5, 'badge text on amber tint'],
+  // Danger keeps its white label on the red fill.
+  ['ink', 'dangerStrong', 4.5, 'danger button label (white on red)'],
   ['accent', 'paper', 4.5, 'figures and accent text on ground'],
   ['accent', 'surface', 4.5, 'figures on cards'],
   ['accentBright', 'paper', 4.5, 'small emphasis text on ground'],

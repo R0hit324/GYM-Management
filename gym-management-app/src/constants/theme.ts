@@ -1,52 +1,52 @@
 /**
  * Gym Management App — design tokens.
  *
- * v4: "Ember Night" — premium dark redesign driven by the user's 8-screen
- * reference image (splash, login, join, member/receptionist/owner
- * dashboards, plans, reports). Near-black ground, charcoal surfaces with
- * subtle borders, vibrant ember-orange as the single brand/action colour,
- * white primary text with muted grey secondary, and semantic green/amber/
- * red state colours. Barlow Condensed 800 carries display headings and
- * figures (title case), Barlow carries body.
+ * v5: "Coach Board" — approved direction of the V5 product redesign
+ * (docs/REDESIGN_V5_AUDIT.md, direction C, inspired by the Fitonist /
+ * STRYVE / UI-Deft dashboard pattern language, original execution).
+ * Layered graphite ground and cards with hairline borders; ONE amber-orange
+ * reserved strictly for primary actions, data highlights and deltas (dark
+ * label on amber fills — premium and AA-strong); white figures, muted grey
+ * metadata; green/amber/red semantic states as quiet tinted pills. SaaS
+ * organisation: KPI rows, unified page headers, chart cards.
  *
  * Functionality rule: this file is style-only. No screen logic, route,
  * demo-honesty pattern or business rule may change for its sake. Every
- * foreground/background pair is machine-verified for WCAG contrast — run
- * `node scripts/contrast-check.mjs` (all pass; buttons qualify as large
- * text: Barlow Condensed 800 at 19px ≥ the 18.66px bold large-text floor).
+ * foreground/background pair is machine-verified — run
+ * `node scripts/contrast-check.mjs` (all pass).
  *
  * Colour-literal floor rule: no component may hard-code a value a token
  * here already expresses. The only sanctioned literals outside this file
  * are the QR surface white (scanner contrast is part of the payload
- * surface, commented at its call site) and demo chart accent choices that
- * reference these tokens by name.
+ * surface, commented at its call site).
  *
  * Dark is the only mode in Part 1; a light variant is deferred.
  */
 
 export const Colors = {
-  // ---- Ground and surfaces (charcoal ladder) --------------------------
-  paper: '#0B0C0E', // screen ground — near-black
-  surface: '#15171B', // cards
-  surfaceAlt: '#1D2025', // wells, elevated fills
-  surfacePressed: '#24272D', // pressed rows / chips
+  // ---- Ground and surfaces (layered graphite ladder) ------------------
+  paper: '#101114', // screen ground
+  surface: '#17181C', // cards
+  surfaceAlt: '#1E2025', // wells, elevated fills, untrained day squares
+  surfacePressed: '#24262B', // pressed rows / chips
 
   // ---- Rules: subtle card borders and stronger dividers ---------------
-  rule: '#26292F',
+  rule: '#2A2D33',
   ruleStrong: '#3A3E46',
   scrim: '#000000', // modal overlay only
 
   // ---- Ink (text): white primary, muted grey secondary ----------------
-  ink: '#F4F6F8',
-  inkMuted: '#A6ACB4',
-  inkSubtle: '#7B828B',
-  inkInverse: '#0B0C0E',
+  ink: '#F4F5F7',
+  inkMuted: '#A0A6AE',
+  inkSubtle: '#80868E',
+  inkInverse: '#141519', // dark label on amber fills
 
-  // ---- Accent: the one ember orange (brand + action) ------------------
-  accent: '#EE6A0C', // fills, selected states, figures on dark
-  accentInk: '#FFFFFF', // labels on accent fills (large text ≥3:1)
-  accentDeep: '#C2410C', // pressed fills, small-button fills (≥4.5:1 with white)
-  accentBright: '#FDBA74', // orange on dark for small emphasis text, focus ring
+  // ---- Accent: the one amber-orange (actions, data, deltas) -----------
+  accent: '#F59E0B', // fills, selected states, figures on dark
+  accentInk: '#141519', // label colour on amber fills (8.9:1)
+  accentDeep: '#D97706', // pressed accent shade
+  accentBright: '#FDBA74', // amber on dark for small emphasis text, focus ring
+  accentBg: '#38260D', // amber tint for badges/chips
   focus: '#FDBA74', // focus ring and nothing else
 
   // ---- Semantic state (own hues; status, never decoration) ------------
@@ -57,7 +57,7 @@ export const Colors = {
   warningBg: '#2E2410',
   warningOnBg: '#FBBF24',
   danger: '#F87171', // red text/figures on dark
-  dangerStrong: '#DC2626', // danger button fill (white label ≥4.5:1)
+  dangerStrong: '#C81E1E', // danger button fill (white/ink label ≥4.5:1)
   dangerBg: '#2B1416',
   dangerOnBg: '#F87171',
   info: '#8FBCFF',
@@ -66,28 +66,28 @@ export const Colors = {
 
   // ---- Role identity — same dark system, different chip weights -------
   roleMember: '#FDBA74',
-  roleMemberBg: '#331D0E',
+  roleMemberBg: '#38260D',
   roleMemberOnBg: '#FDBA74',
   roleReception: '#C8CDD4',
-  roleReceptionBg: '#26292F',
+  roleReceptionBg: '#2A2D33',
   roleReceptionOnBg: '#C8CDD4',
-  roleOwner: '#0B0C0E',
-  roleOwnerBg: '#F4F6F8',
-  roleOwnerOnBg: '#0B0C0E',
+  roleOwner: '#141519',
+  roleOwnerBg: '#F4F5F7',
+  roleOwnerOnBg: '#141519',
 
   // ---- Attendance heatmap (LeetCode-style day squares on dark) --------
-  heat0: '#1D2025', // no check-ins: elevated square
+  heat0: '#1E2025', // no check-ins: elevated square
   heat1: '#1C4A2A', // one check-in
   heat2: '#237A3B', // two
   heat3: '#2EA043', // three
   heat4: '#46D96F', // four or more
 
-  // ---- Chart series (ember + step accents; values always labelled) ----
-  chartPrimary: '#F97316',
+  // ---- Chart series (amber + step accents; values always labelled) ----
+  chartPrimary: '#F59E0B',
   chartSecondary: '#FDBA74',
-  chartTertiary: '#7B828B',
+  chartTertiary: '#7A8087',
   chartQuaternary: '#4ADE80',
-  chartRule: '#26292F',
+  chartRule: '#2A2D33',
 } as const;
 
 export type ColorToken = keyof typeof Colors;
@@ -106,12 +106,12 @@ export const Spacing = {
 
 export type SpacingToken = keyof typeof Spacing;
 
-/** Rounded, controlled corners per the reference: soft cards, pill chips. */
+/** Rounded, controlled corners per the Coach Board reference: soft cards. */
 export const Radius = {
-  xs: 6,
-  sm: 10,
-  md: 14,
-  lg: 18,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
   pill: 999,
 } as const;
 
@@ -119,8 +119,8 @@ export type RadiusToken = keyof typeof Radius;
 
 /**
  * Type scale. Barlow Condensed 800 carries display headings and figures in
- * title case (the reference is not all-caps); Barlow 400/500/600/700 carries
- * body, labels, captions and buttons. Sizes stay on the established scale.
+ * title case; Barlow 400/500/600/700 carries body, labels, captions and
+ * buttons. Few sizes, few weights — editorial, not noisy.
  */
 export const Type = {
   displayXL: { fontSize: 40, lineHeight: 44, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
@@ -133,8 +133,8 @@ export const Type = {
   caption: { fontSize: 12, lineHeight: 16, fontFamily: 'Barlow_400' as const, letterSpacing: 0 },
   figure: { fontSize: 28, lineHeight: 30, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
   figureSmall: { fontSize: 20, lineHeight: 22, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
-  // Buttons are large text: condensed 800 at 19px ≥ the 18.66px bold floor,
-  // so white-on-ember fills meet WCAG at the 3:1 large-text threshold.
+  // Buttons: condensed 800, title case ("Sign in", "Next"). Amber fills take
+  // the dark ink label (verified ≥4.5:1 at any size); danger fills keep white.
   button: { fontSize: 19, lineHeight: 22, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0.2 },
   buttonSmall: { fontSize: 15, lineHeight: 17, fontFamily: 'BarlowCondensed_700' as const, letterSpacing: 0.2 },
 } as const;

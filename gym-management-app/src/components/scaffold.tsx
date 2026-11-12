@@ -1,13 +1,12 @@
 /**
- * Screen scaffold: paper background, safe area, screen title, demo badge
- * and optional action row, scrolling body with keyboard persistence.
+ * Screen scaffold: paper background, safe area, unified PageHeader, demo
+ * badge and optional action row, scrolling body with keyboard persistence.
  */
 import { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppText } from '@/components/ui/text';
-import { DemoBadge } from '@/components/ui/demo-badge';
+import { PageHeader } from '@/components/ui/page-header';
 import { useTokens } from '@/hooks/use-tokens';
 
 export function Screen(props: {
@@ -23,8 +22,8 @@ export function Screen(props: {
   const insets = useSafeAreaInsets();
   const { colors, spacing } = tokens;
 
-  // Ember Night header: white title on the near-black ground, subtle rule
-  // beneath; the role chip carries workspace identity.
+  // Coach Board header: the shared PageHeader — one composition for every
+  // screen; the role chip in the body carries workspace identity.
   const body = (
     <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl + 24 }}>
       {props.children}
@@ -36,30 +35,12 @@ export function Screen(props: {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View
-          style={{
-            paddingHorizontal: spacing.lg,
-            paddingTop: spacing.sm,
-            paddingBottom: spacing.sm,
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            borderBottomWidth: 1,
-            borderBottomColor: colors.rule,
-          }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', flexWrap: 'wrap' }}>
-              <AppText variant="title">{props.title}</AppText>
-              {props.demo && <DemoBadge />}
-            </View>
-            {props.subtitle && (
-              <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
-                {props.subtitle}
-              </AppText>
-            )}
-          </View>
-          {props.actions && <View style={{ flexDirection: 'row', gap: spacing['3xs'] }}>{props.actions}</View>}
-        </View>
+        <PageHeader
+          title={props.title}
+          subtitle={props.subtitle}
+          demo={props.demo}
+          actions={props.actions}
+        />
         {props.scroll === false ? (
           body
         ) : (

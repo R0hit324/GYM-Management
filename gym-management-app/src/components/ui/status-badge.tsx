@@ -16,7 +16,7 @@ const toneMap = {
   danger: { bg: 'dangerBg', fg: 'dangerOnBg' },
   info: { bg: 'infoBg', fg: 'infoOnBg' },
   neutral: { bg: 'surfaceAlt', fg: 'inkMuted' },
-  accent: { bg: 'infoBg', fg: 'infoOnBg' },
+  accent: { bg: 'accentBg', fg: 'accentBright' },
   member: { bg: 'roleMemberBg', fg: 'roleMemberOnBg' },
   reception: { bg: 'roleReceptionBg', fg: 'roleReceptionOnBg' },
   owner: { bg: 'roleOwnerBg', fg: 'roleOwnerOnBg' },
