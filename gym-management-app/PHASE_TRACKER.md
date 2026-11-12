@@ -65,6 +65,15 @@
 - Extra top-level screens beyond 8 role-group screens
 
 ## Part 2 — Verification + Backend Integration
+
+### V5 Redesign (2026-11-12) — "Coach Board"
+**Completed**: full product-design pass, approved direction C, visual-only
+scope. Audit + exploration in `docs/REDESIGN_V5_AUDIT.md`. Staged commits:
+tokens+components (`7da45e4`), auth (`16c7406`), member (`070d819`),
+reception (`764e80c`), owner (`3125119`), consistency sweep (`804d67f`).
+No route, feature, form, validation, demo-honesty pattern or business rule
+changed. See `docs/DESIGN_SYSTEM.md` (v5 section) for the component set.
+
 **Planned**: After Part 1 review/approval
 - Supabase backend connection
 - Auth (email/OTP or social) with role enforcement

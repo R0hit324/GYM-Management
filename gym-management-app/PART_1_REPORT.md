@@ -281,3 +281,29 @@ success states.
 additive: `StatusBadge` gained a `member` tone; `Screen`-based screens
 unchanged), screen logic, validation, demo-data honesty copy, business
 rules, tests' semantics, dependency list.
+---
+
+## V5 Redesign Addendum — "Coach Board" (2026-11-12)
+
+Complete product-design pass per the staged V5 brief (audit -> direction
+approval -> design system -> screens -> QA). Audit and approved direction C
+are recorded in docs/REDESIGN_V5_AUDIT.md. Scope was visual-only: member
+Profile/notifications surfaces and a report Export were NOT added (their
+absence stays honestly labelled as before).
+
+**Verification after v5**
+- node scripts/contrast-check.mjs - 32/32 pairs pass (AA 4.5:1, heatmap 3:1)
+- npx tsc --noEmit - clean
+- npx expo lint - 0 errors, 0 warnings
+- npx jest --passWithNoTests --no-cache - 3 suites, 4 tests pass
+- npx expo start - Metro serving this workspace (packager-status:running);
+  visual verification in Expo Go / emulator still requires a device, which
+  this environment does not have for automated screenshots.
+
+**What changed**: tokens (theme.ts), component layer (PageHeader, ActionTile,
+DeltaPill/StatTile delta, ChartCard, StepDots, Section action prop,
+button/badge re-tune, line-chart area fill + gridlines), and screen
+compositions (KPI rows, quick-action grids, amber selection states).
+**What did NOT change**: routes, workspaces, forms, validation, modals,
+demo-honesty copy, business rules, component API removals (all additive),
+dependency list.

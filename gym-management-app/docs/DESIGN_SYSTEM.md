@@ -1,6 +1,42 @@
 # Design System
 
-## Design Direction: "Ember Night" — v4 dark theme (reference-driven)
+## Design Direction: "Coach Board" — v5 product redesign (current)
+
+v5 is the complete product-design pass approved in `docs/REDESIGN_V5_AUDIT.md`
+(direction C, visual-only scope). Layered graphite ladder — ground `#101114`,
+cards `#17181C`, wells `#1E2025`, hairline `#2A2D33` borders, radii
+8/12/16/20/pill — with **one amber-orange `#F59E0B`** reserved strictly for
+primary actions, data highlights and deltas. Amber fills carry the dark label
+`accentInk #141519` (8.9:1, AA at any size — the v4 white-on-ember and
+deeper-shade tricks are gone). White figures, muted grey metadata, and
+green/amber/red state pills that stay quiet. SaaS organisation: one
+`PageHeader` on every screen, KPI rows with measured `DeltaPill`s,
+`ActionTile` quick-action grids, `ChartCard` headers with delta chips,
+`StepDots` numbered steps, one `Section` heading pattern.
+
+### v5 component layer (all APIs additive)
+
+| Component | File | Notes |
+|---|---|---|
+| `PageHeader` | `src/components/ui/page-header.tsx` | The one header system; `Screen` scaffold adopts it |
+| `ActionTile` / `ActionGrid` | `src/components/ui/action-tile.tsx` | Quick-action grids (member dashboard, reception actions) |
+| `StatDelta` / `DeltaPill` / `StatTile delta` | `src/components/ui/stat-tile.tsx` | Delta chips render only for measured comparisons |
+| `ChartCard` | `src/components/charts/chart-card.tsx` | Chart title + delta + caption shell |
+| `StepDots` | `src/components/ui/step-dots.tsx` | Numbered-step indicator (join flow) |
+| `Section action` | `src/components/ui/card.tsx` | Optional right-side action next to the heading |
+
+Charts gained a soft gradient area fill under the line and quiet gridlines
+(`line-chart.tsx`); deltas displayed are computed from the demo trends
+(demoCollectionsTrend WoW, demoAttendanceTrend week shape) — never asserted.
+
+*All 32 foreground/background pairs machine-verified: `node
+scripts/contrast-check.mjs` (all pass, AA 4.5:1; heatmap non-text pairs at
+3:1 per WCAG 1.4.11).*
+
+---
+
+## Design Direction: "Ember Night" — v4 dark theme (superseded by v5, historical)
+
 
 v4 is a full visual redesign driven by the user's 8-screen reference image
 (splash, login, join, member/receptionist/owner dashboards, membership plans,
