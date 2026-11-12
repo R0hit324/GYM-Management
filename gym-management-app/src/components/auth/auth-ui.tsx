@@ -50,7 +50,7 @@ export function AuthHeader(props: { topRow?: ReactNode; style?: StyleProp<ViewSt
   const { colors, spacing, radius } = tokens;
 
   return (
-    <View style={[{ flex: 0.9, minHeight: 176, backgroundColor: colors.authTop }, props.style]}>
+    <View style={[{ flex: 0.42, minHeight: 148, backgroundColor: colors.authTop }, props.style]}>
       <DotPattern />
       {props.topRow && (
         <View
@@ -102,7 +102,7 @@ export function AuthPanel({ children, style }: { children: ReactNode; style?: St
     <View
       style={[
         {
-          flex: 1.1,
+          flex: 1,
           backgroundColor: colors.authBg,
           borderTopLeftRadius: radius.authPanel,
           borderTopRightRadius: radius.authPanel,
