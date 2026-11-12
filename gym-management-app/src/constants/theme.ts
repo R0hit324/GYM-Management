@@ -89,23 +89,27 @@ export const Colors = {
   chartQuaternary: '#4ADE80',
   chartRule: '#2A2D33',
 
-  // ---- Auth surface ("Nexa for Pulse", login/join/recovery only) ------
-  // Inspired by the Nexa minimal login reference (midnight navy ground,
-  // soft-blue accent, calm slate ladder). Scoped to the authentication
+  // ---- Auth surface (light-top + black-panel reference, auth screens only) --
+  // Pixel-referenced to the supplied Travel-App login/signup/OTP screenshot:
+  // light dotted upper zone, large black panel with rounded top corners,
+  // charcoal pill fields, white pill CTA. Scoped to the authentication
   // screens: the workspaces keep the Coach Board amber system. Semantic
   // states above (danger/success) are shared, not duplicated.
-  authBg: '#050814', // midnight navy screen ground
-  authSurface: '#0A0E1E', // cards, logo plate, sheets on auth screens
-  authField: '#0D1326', // elevated input surface
-  authRule: '#1B2136', // hairline borders
-  authRuleStrong: '#313957', // stronger border / upcoming step
-  authAccent: '#9CB7F7', // soft blue: CTAs, focus ring, selected state
-  authAccentDeep: '#82A3EF', // pressed CTA
-  authAccentInk: '#0A0F22', // dark label on the soft-blue fill
-  authInk: '#F2F4FA', // primary text
-  authInkMuted: '#AFB2B9', // secondary text
-  authInkSubtle: '#7186BC', // captions, metadata
-  authSelectedBg: '#152042', // selected category tint
+  authTop: '#F3F3F3', // light upper zone (dotted pattern + logo)
+  authTopInk: '#6B6B6B', // logo wordmark / dark controls on the light zone
+  authBg: '#050505', // black authentication panel
+  authSurface: '#151515', // cards, sheets, plan rows on auth screens
+  authField: '#151515', // pill input surface
+  authRule: '#303030', // field borders / hairlines
+  authRuleStrong: '#4A4A4A', // stronger border (focused-adjacent, upcoming step)
+  authAccent: '#FFFFFF', // white: CTA fill, focus border, selected state
+  authAccentDeep: '#E2E2E2', // pressed CTA
+  authAccentInk: '#080808', // dark label on the white pill
+  authInk: '#FFFFFF', // primary text on the panel
+  authInkMuted: '#A3A3A3', // secondary text (≥4.5:1 on panel + field)
+  authInkSubtle: '#858585', // captions, metadata (≥4.5:1 on panel + field)
+  authHeadingMuted: '#8C8C8C', // muted half of two-tone headings
+  authSelectedBg: '#1E1E1E', // selected category pill tint
 } as const;
 
 export type ColorToken = keyof typeof Colors;
@@ -130,6 +134,7 @@ export const Radius = {
   sm: 12,
   md: 16,
   lg: 20,
+  authPanel: 30, // large rounded top corners of the black auth panel
   pill: 999,
 } as const;
 
@@ -155,6 +160,10 @@ export const Type = {
   // the dark ink label (verified ≥4.5:1 at any size); danger fills keep white.
   button: { fontSize: 19, lineHeight: 22, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0.2 },
   buttonSmall: { fontSize: 15, lineHeight: 17, fontFamily: 'BarlowCondensed_700' as const, letterSpacing: 0.2 },
+  // Auth-only: the reference's large light-weight headings ("Welcome back,")
+  // — a plain-weight sans at display size, NOT the condensed-800 display.
+  // Two-tone colouring is applied via nested AppText at the call site.
+  authHeading: { fontSize: 30, lineHeight: 36, fontFamily: 'Barlow_400' as const, letterSpacing: 0 },
 } as const;
 
 export type TypeToken = keyof typeof Type;

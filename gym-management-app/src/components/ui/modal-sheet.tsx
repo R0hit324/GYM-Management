@@ -28,7 +28,7 @@ export function ModalSheet(props: {
   subtitle?: string;
   toneBadge?: ReactNode;
   children: ReactNode;
-  /** Additive: 'auth' renders the Nexa-for-Pulse surface for auth sheets. */
+  /** Additive: 'auth' renders the black-panel auth surface for auth sheets. */
   surface?: 'default' | 'auth';
 }) {
   const tokens = useTokens();

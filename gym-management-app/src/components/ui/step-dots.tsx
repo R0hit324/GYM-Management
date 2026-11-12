@@ -3,8 +3,8 @@
  * Circles carry step numbers; completed steps get the tint, the current
  * step gets the fill with the dark numeral, upcoming steps stay quiet.
  * Connectors tint as they are passed. Pure presentation — state stays owned
- * by the screen. `tone: 'auth'` renders the Nexa-for-Pulse soft-blue set
- * for the authentication screens (additive; default is the Coach Board
+ * by the screen. `tone: 'auth'` renders the auth screens' white set (white
+ * current-step fill, dark numeral — additive; default is the Coach Board
  * amber used across the workspaces).
  */
 import { View } from 'react-native';

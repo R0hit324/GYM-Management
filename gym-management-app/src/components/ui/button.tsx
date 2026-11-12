@@ -59,8 +59,8 @@ export function Button(
     // Danger fills keep a white label; the dark accentInk would fail on red.
     danger: { bg: colors.dangerStrong, fg: colors.ink },
     onAccent: { fg: colors.accentInk, border: colors.accentInk },
-    // Auth-only ("Nexa for Pulse"): soft-blue fill, dark label — the
-    // authentication screens' primary; workspaces keep the amber primary.
+    // Auth-only: white pill fill, dark label — the authentication screens'
+    // primary; workspaces keep the amber primary.
     primarySoft: { bg: colors.authAccent, fg: colors.authAccentInk },
   };
 
@@ -72,7 +72,9 @@ export function Button(
     backgroundColor: v.bg ?? 'transparent',
     borderWidth: v.borderWidth ?? (v.border ? 1 : 0),
     borderColor: v.border,
-    borderRadius: radius.sm,
+    // primarySoft is the auth screens' white pill — fully rounded, plain
+    // sans label (the reference's CTA); every other variant stays sm/condensed.
+    borderRadius: variant === 'primarySoft' ? radius.pill : radius.sm,
     minHeight: height,
     paddingHorizontal: ph,
     alignItems: 'center',
@@ -84,7 +86,12 @@ export function Button(
 
   const rootStyle: StyleProp<ViewStyle> = [fullWidth && { alignSelf: 'stretch' }, style];
   // Coach Board buttons: Barlow Condensed 800 in title case, untracked.
-  const typeToken = size === 'medium' ? tokens.type.button : tokens.type.buttonSmall;
+  const typeToken =
+    variant === 'primarySoft'
+      ? { fontSize: 16, lineHeight: 20, fontFamily: 'Barlow_600' as const, letterSpacing: 0.2 }
+      : size === 'medium'
+        ? tokens.type.button
+        : tokens.type.buttonSmall;
   const textSizeStyle: StyleProp<TextStyle> = {
     ...typeToken,
     color: v.fg,

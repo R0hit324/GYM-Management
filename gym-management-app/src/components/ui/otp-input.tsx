@@ -2,17 +2,25 @@
  * OTP entry: fixed boxes, numeric keyboard, paste-friendly, resend cooldown
  * and attempt budget designed in (enforcement is server-side in Part 2; the
  * client never trusts a code here — Part 1 submits nothing).
+ * `appearance='auth'` renders the reference's charcoal boxes with the white
+ * focused border (additive; default keeps the workspace styling).
  */
 import { useRef, useState, type ComponentRef } from 'react';
 import { TextInput, View } from 'react-native';
 
 import { useTokens } from '@/hooks/use-tokens';
 
-export function OtpInput(props: { length?: number; onChange?: (code: string) => void }) {
+export function OtpInput(props: {
+  length?: number;
+  onChange?: (code: string) => void;
+  appearance?: 'default' | 'auth';
+}) {
   const length = props.length ?? 6;
+  const auth = props.appearance === 'auth';
   const tokens = useTokens();
   const { colors, spacing, radius, type } = tokens;
   const [values, setValues] = useState<string[]>(Array(length).fill(''));
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const refs = useRef<(ComponentRef<typeof TextInput> | null)[]>([]);
 
   const setDigit = (i: number, text: string) => {
@@ -48,17 +56,27 @@ export function OtpInput(props: { length?: number; onChange?: (code: string) => 
               refs.current[i - 1]?.focus();
             }
           }}
+          onFocus={() => setFocusedIndex(i)}
+          onBlur={() => setFocusedIndex((f) => (f === i ? null : f))}
           style={[
             type.bodyStrong,
             {
               flex: 1,
               minHeight: 52,
               textAlign: 'center',
-              backgroundColor: colors.surface,
+              backgroundColor: auth ? colors.authField : colors.surface,
               borderWidth: 1,
-              borderColor: v ? colors.accent : colors.ruleStrong,
-              borderRadius: radius.sm,
-              color: colors.ink,
+              borderColor: auth
+                ? focusedIndex === i
+                  ? colors.authAccent
+                  : v
+                    ? colors.authRuleStrong
+                    : colors.authRule
+                : v
+                  ? colors.accent
+                  : colors.ruleStrong,
+              borderRadius: auth ? radius.md : radius.sm,
+              color: auth ? colors.authInk : colors.ink,
             },
           ]}
         />

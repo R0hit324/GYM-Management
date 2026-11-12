@@ -11,14 +11,17 @@
  * locally, never claims a successful sign-in, and offers an explicit demo
  * preview of the workspaces instead.
  *
- * Visual direction: "Nexa for Pulse" — minimal mobile login inspired by the
- * Nexa reference (midnight navy ground #050814, soft blue #9CB7F7 accent,
- * calm slate ladder, hairline borders, generous spacing). Pulse Gym keeps
- * its brand mark and name; the workspaces keep the Coach Board system.
+ * Visual direction: pixel-referenced to the supplied Travel-App screenshot —
+ * light dotted upper zone (#F3F3F3) with the centered grey Pulse Gym logo,
+ * then a black panel (#050505) with large rounded top corners holding all
+ * auth content: two-tone heading, compact category pills, charcoal pill
+ * fields, white pill CTA, minimal text links. The workspaces keep the Coach
+ * Board system.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Link, router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/text';
@@ -27,7 +30,14 @@ import { TextField } from '@/components/ui/text-field';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { PressSurface } from '@/components/ui/press-surface';
 import { DemoBadge } from '@/components/ui/demo-badge';
-import { AuthHeader, CategorySelector, AuthErrorMessage, type AuthCategory } from '@/components/auth/auth-ui';
+import {
+  AuthHeader,
+  AuthPanel,
+  AuthHeading,
+  CategorySelector,
+  AuthErrorMessage,
+  type AuthCategory,
+} from '@/components/auth/auth-ui';
 import { Ionicons } from '@expo/vector-icons';
 import { useTokens } from '@/hooks/use-tokens';
 import { hapticSelect } from '@/utils/haptics';
@@ -97,145 +107,175 @@ export default function LoginScreen() {
   }, []);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.authBg, paddingTop: insets.top + 8 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
-        <AuthHeader
-          brandLabel="PULSE GYM"
-          heading="Welcome Back"
-          subcopy="Sign in to continue your fitness journey."
-        />
+    <View style={{ flex: 1, backgroundColor: colors.authTop, paddingTop: insets.top }}>
+      <StatusBar style="dark" />
+      {/* Light dotted upper zone + centered grey logo */}
+      <AuthHeader />
 
-        {/* Account category — expectation only; the backend verifies role */}
-        <AppText variant="label" style={{ color: colors.authInkMuted, marginBottom: spacing.xs }}>
-          Account category
-        </AppText>
-        <CategorySelector
-          categories={roleOrder.map((r) => ({ id: r as AuthCategory, label: roleMeta[r].label, blurb: roleMeta[r].blurb }))}
-          value={role as AuthCategory}
-          onChange={pickRole}
-          accessibilityHint="Pick what you expect to be. The gym verifies your actual role after sign-in."
-        />
-        <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.xs }}>
-          This is only what you expect to be. The gym verifies your actual role after sign-in.
-        </AppText>
+      {/* Black panel — all auth content lives here */}
+      <AuthPanel>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xl }}
+            keyboardShouldPersistTaps="handled">
+            <AuthHeading muted="Welcome " emphasis="back," />
+            <AppText variant="label" style={{ color: colors.authInkSubtle, marginTop: spacing['3xs'] }}>
+              Sign in to continue your fitness journey.
+            </AppText>
 
-        {/* Security note for staff roles */}
-        {role !== 'member' && (
-          <View
-            style={{
-              marginTop: spacing.sm,
-              backgroundColor: colors.infoBg,
-              borderRadius: radius.sm,
-              padding: spacing.sm,
-              flexDirection: 'row',
-              gap: spacing.xs,
-              alignItems: 'flex-start',
-            }}>
-            <Ionicons name="shield-checkmark-outline" size={18} color={colors.info} style={{ marginTop: spacing['3xs'] }} />
-            <View style={{ flex: 1 }}>
-              <AppText variant="caption" style={{ color: colors.infoOnBg }}>
-                {role === 'owner'
-                  ? 'Owner access needs multi-factor authentication. Accounts are created by the gym owner, not here.'
-                  : 'Receptionist accounts are created by the gym owner, not here. Multi-factor authentication is required.'}
+            {/* Account category — expectation only; the backend verifies role */}
+            <CategorySelector
+              categories={roleOrder.map((r) => ({ id: r as AuthCategory, label: roleMeta[r].label, blurb: roleMeta[r].blurb }))}
+              value={role as AuthCategory}
+              onChange={pickRole}
+              accessibilityHint="Pick what you expect to be. The gym verifies your actual role after sign-in."
+              style={{ marginTop: spacing.md }}
+            />
+            <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.xs }}>
+              This is only what you expect to be. The gym verifies your actual role after sign-in.
+            </AppText>
+
+            {/* Security note for staff roles */}
+            {role !== 'member' && (
+              <View
+                style={{
+                  marginTop: spacing.sm,
+                  backgroundColor: colors.infoBg,
+                  borderRadius: radius.sm,
+                  padding: spacing.sm,
+                  flexDirection: 'row',
+                  gap: spacing.xs,
+                  alignItems: 'flex-start',
+                }}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={colors.info} style={{ marginTop: spacing['3xs'] }} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="caption" style={{ color: colors.infoOnBg }}>
+                    {role === 'owner'
+                      ? 'Owner access needs multi-factor authentication. Accounts are created by the gym owner, not here.'
+                      : 'Receptionist accounts are created by the gym owner, not here. Multi-factor authentication is required.'}
+                  </AppText>
+                </View>
+              </View>
+            )}
+
+            {/* Pill fields */}
+            <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+              <TextField
+                label="Email address"
+                appearance="auth"
+                placeholder={submittedPlaceholder(role)}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                inputMode="email"
+                value={email}
+                onChangeText={setEmail}
+                error={errors.email}
+                leadingIcon="mail-outline"
+                accentColor={colors.authAccent}
+                accessibilityHint={roleSummary}
+              />
+              <TextField
+                label="Password"
+                appearance="auth"
+                placeholder="Password"
+                secure
+                autoComplete="password"
+                value={password}
+                onChangeText={setPassword}
+                error={errors.password}
+                leadingIcon="lock-closed-outline"
+                accentColor={colors.authAccent}
+              />
+              <PressSurface
+                accessibilityRole="button"
+                onPress={forgot}
+                scaleOnPress={false}
+                hitPadding={spacing.xs}
+                style={{ alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center' }}>
+                <AppText variant="label" style={{ color: colors.authInkMuted }}>
+                  Forgot password?
+                </AppText>
+              </PressSurface>
+            </View>
+
+            {submitError && (
+              <View style={{ marginTop: spacing.xs }}>
+                <AuthErrorMessage message={submitError} />
+              </View>
+            )}
+
+            {/* White pill CTA */}
+            <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+              <Button
+                label={submitting ? 'Checking details' : 'Sign in'}
+                icon={submitting ? undefined : 'log-in-outline'}
+                loading={submitting}
+                disabled={submitting}
+                fullWidth
+                variant="primarySoft"
+                onPress={onSubmit}
+                accessibilityHint="Sign-in is not connected to a server in this preview."
+              />
+              {/* Minimal text links (reference avoids outlined buttons) */}
+              <PressSurface
+                accessibilityRole="button"
+                onPress={() => setPreviewOpen(true)}
+                scaleOnPress={false}
+                hitPadding={spacing.xs}
+                style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}>
+                <AppText variant="label" style={{ color: colors.authInkMuted }}>
+                  Preview the workspaces (demo)
+                </AppText>
+              </PressSurface>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', marginTop: spacing.xs }}>
+              <View style={{ flex: 1 }}>
+                <DemoBadge label="No server connected" />
+              </View>
+              <AppText variant="caption" style={{ color: colors.authInkSubtle, textAlign: 'right', flex: 1 }}>
+                Sign-in, OTP and payments arrive with the backend in Parts 2 to 4.
               </AppText>
             </View>
-          </View>
-        )}
 
-        {/* Fields */}
-        <View style={{ marginTop: spacing.lg, gap: spacing['3xs'] }}>
-          <TextField
-            label="Email address"
-            placeholder={submittedPlaceholder(role)}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            inputMode="email"
-            value={email}
-            onChangeText={setEmail}
-            error={errors.email}
-            leadingIcon="mail-outline"
-            accentColor={colors.authAccent}
-            accessibilityHint={roleSummary}
-          />
-          <TextField
-            label="Password"
-            secure
-            autoComplete="password"
-            value={password}
-            onChangeText={setPassword}
-            error={errors.password}
-            leadingIcon="lock-closed-outline"
-            accentColor={colors.authAccent}
-          />
-          <PressSurface accessibilityRole="button" onPress={forgot} scaleOnPress={false} style={{ alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center' }}>
-            <AppText variant="label" style={{ color: colors.authAccent }}>
-              Forgot password?
+            {/* Member registration entry point — minimal text link */}
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: colors.authRule,
+                paddingTop: spacing.sm,
+                marginTop: spacing.md,
+              }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs }}>
+                <AppText variant="label" style={{ color: colors.authInkMuted }}>
+                  New to the gym?
+                </AppText>
+                <Link href="/join" asChild>
+                  <PressSurface
+                    accessibilityRole="link"
+                    hitPadding={spacing.xs}
+                    scaleOnPress={false}
+                    style={{ minHeight: 44, justifyContent: 'center' }}>
+                    <AppText variant="label" style={{ color: colors.authInk, fontWeight: '600' }}>
+                      Join as a member
+                    </AppText>
+                  </PressSurface>
+                </Link>
+              </View>
+              <AppText variant="caption" align="center" style={{ color: colors.authInkSubtle, marginTop: spacing['3xs'] }}>
+                Members join online. Staff accounts are issued by the owner.
+              </AppText>
+            </View>
+
+            <AppText variant="caption" align="center" style={{ color: colors.authInkSubtle, marginTop: spacing.md }}>
+              Sessions, password recovery and account security land in Part 2. Nothing on this screen is sent anywhere.
             </AppText>
-          </PressSurface>
-        </View>
-
-        {submitError && (
-          <View style={{ marginTop: spacing.xs }}>
-            <AuthErrorMessage message={submitError} />
-          </View>
-        )}
-
-        <View style={{ marginTop: spacing.md, gap: spacing.xs }}>
-          <Button
-            label={submitting ? 'Checking details' : 'Sign in'}
-            icon={submitting ? undefined : 'log-in-outline'}
-            loading={submitting}
-            disabled={submitting}
-            fullWidth
-            variant="primarySoft"
-            onPress={onSubmit}
-            accessibilityHint="Sign-in is not connected to a server in this preview."
-          />
-          <Button
-            label="Preview the workspaces (demo)"
-            variant="secondary"
-            icon="grid-outline"
-            fullWidth
-            onPress={() => setPreviewOpen(true)}
-          />
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', marginTop: spacing.xs, marginBottom: spacing.lg }}>
-          <View style={{ flex: 1 }}>
-            <DemoBadge label="No server connected" />
-          </View>
-          <AppText variant="caption" tone="subtle" style={{ textAlign: 'right', flex: 1 }}>
-            Sign-in, OTP and payments arrive with the backend in Parts 2 to 4.
-          </AppText>
-        </View>
-
-        {/* Member registration entry point */}
-        <View
-          style={{
-            borderTopWidth: 1,
-            borderTopColor: colors.authRule,
-            paddingTop: spacing.md,
-          }}>
-          <AppText variant="bodyStrong" style={{ color: colors.authInk }}>
-            New to the gym?
-          </AppText>
-          <AppText variant="label" style={{ color: colors.authInkMuted, marginTop: spacing['3xs'] }}>
-            Members join online. Staff accounts are issued by the owner.
-          </AppText>
-          <View style={{ marginTop: spacing.sm }}>
-            <Link href="/join" asChild>
-              <Button label="Join as a member" icon="add-circle-outline" variant="secondary" fullWidth />
-            </Link>
-          </View>
-        </View>
-
-        <AppText variant="caption" tone="subtle" align="center" style={{ marginTop: spacing.lg }}>
-          Sessions, password recovery and account security land in Part 2. Nothing on this screen is sent anywhere.
-        </AppText>
-      </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </AuthPanel>
 
       {/* Demo workspace preview */}
       <ModalSheet
@@ -268,7 +308,7 @@ export default function LoginScreen() {
                 backgroundColor: colors.authField,
                 minHeight: 60,
               }}>
-              <Ionicons name="business-outline" size={20} color={colors.authAccent} />
+              <Ionicons name="business-outline" size={20} color={colors.authInk} />
               <View style={{ flex: 1 }}>
                 <AppText variant="bodyStrong" style={{ color: colors.authInk }}>
                   {roleMeta[r].label}
@@ -300,7 +340,7 @@ export default function LoginScreen() {
           Members: talk to the reception desk. Staff: contact the Owner.
         </AppText>
       </ModalSheet>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

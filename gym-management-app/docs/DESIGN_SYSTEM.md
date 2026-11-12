@@ -35,26 +35,36 @@ scripts/contrast-check.mjs` (all pass, AA 4.5:1; heatmap non-text pairs at
 
 ---
 
-## Auth surface: "Nexa for Pulse" (login / join / recovery only)
+## Auth surface: light-top + black panel (login / join / recovery only)
 
-The authentication screens use a separate, scoped palette inspired by the
-Nexa minimal login reference (Dribbble, designer Hasan — live fetch was
-blocked in this environment; built from the brief's detailed spec of the
-reference). Midnight navy ground `authBg #050814`, soft blue accent
-`authAccent #9CB7F7` reserved for CTAs/focus/selection with a dark label
-`authAccentInk #0A0F22`, calm slate text ladder (`authInk #F2F4FA`,
-`authInkMuted #AFB2B9`, `authInkSubtle #7186BC`), elevated input surface
-`authField #0D1326` with hairline `authRule #1B2136` borders. The amber
-Coach Board system is untouched everywhere outside the auth screens, and
-semantic danger/success tokens are shared.
+The authentication screens are pixel-referenced to the supplied Travel-App
+screenshot (Dribbble — live fetch was blocked in this environment; the
+attached image was studied directly). Structure: a light upper zone
+`authTop #F3F3F3` with a real SVG **dot pattern** (`DotPattern`, ~16px grid)
+and the centered grey Pulse Gym logo (`authTopInk #6B6B6B` wordmark + dark
+circle mark), then a black panel `authBg #050505` with large rounded top
+corners (`radius.authPanel` 30) extending to the bottom — all auth content
+sits inside the panel. Typography: large light-weight **two-tone headings**
+(`authHeading` — Barlow 400 at 30/36; muted half `authHeadingMuted #8C8C8C`,
+white emphasis `authInk`). Fields: charcoal pill inputs `authField #151515`
+with `authRule #303030` borders and white focus borders
+(`TextField appearance='auth'`, `OtpInput appearance='auth'`). Primary CTA:
+**white pill** (`Button variant 'primarySoft'` → `authAccent #FFFFFF` fill,
+`authAccentInk #080808` plain-sans label). Secondary actions are minimal text
+links — no outlined buttons on auth screens. The amber Coach Board system is
+untouched everywhere outside the auth screens, and semantic danger/success
+tokens are shared. Muted tones are WCAG-adjusted (`authInkSubtle #858585`,
+`authInkMuted #A3A3A3` — the reference's `#626262` fails 4.5:1 on the panel).
 
-Additive component APIs: `TextField accentColor`, `Button variant
-'primarySoft'`, `ModalSheet surface='auth'`, `StepDots tone='auth'`; new
-auth-only components live in `src/components/auth/auth-ui.tsx`
-(`AuthHeader`, `CategorySelector`, `AuthErrorMessage`, `AuthPlanCard`).
-Plan benefit lines in signup are demo-labelled `demoPlans.highlights`.
-The selected account category remains an expectation only — authorisation
-is verified by the backend; no copy or logic implying otherwise was changed.
+Additive component APIs: `TextField appearance='auth'` / `accentColor`,
+`OtpInput appearance='auth'`, `Button variant 'primarySoft'`,
+`ModalSheet surface='auth'`, `StepDots tone='auth'`; new auth-only components
+live in `src/components/auth/auth-ui.tsx` (`DotPattern`, `AuthHeader`,
+`AuthPanel`, `AuthHeading`, `CategorySelector`, `AuthErrorMessage`,
+`AuthPlanCard`). Plan benefit lines in signup are demo-labelled
+`demoPlans.highlights`. The selected account category remains an expectation
+only — authorisation is verified by the backend; no copy or logic implying
+otherwise was changed.
 
 ---
 
