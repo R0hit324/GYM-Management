@@ -1,56 +1,63 @@
-# Welcome to your Expo app 👋
+# Gym Management App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Expo + React Native + TypeScript** — Gym management mobile application (Part 1 only).
 
-## Get started
+## Overview
 
-1. Install dependencies
+A role-based mobile app for gym management with 8 main screens:
 
-   ```bash
-   npm install
-   ```
+| Role | Screens |
+|------|---------|
+| Member | Today's Attendance, QR Attendance |
+| Receptionist | Online Joining, QR Attendance, Fees Entry, Renewal List |
+| Owner | Everyday Report, Lost Member List |
 
-2. Start the app
+## Screens
 
-   ```bash
-   npx expo start
-   ```
+- **Login** (`/login`) — Role picker with honest demo preview modal
+- **Online Joining** (`/join`) — 3-step join; verification designed, disabled submit "not connected"
+- **QR Attendance** (`/attendance` — member/reception) — Scanner states + review control
+- **Today's Attendance** — Member's attendance history
+- **Fees Entry** (`/fees`) — Fee payment recording
+- **Renewal List** (`/renewals`) — Membership renewals
+- **Everyday Report** (`/report`) — Charts & stats (Owner)
+- **Lost Member List** (`/lost`) — Inactivity-flagged members (Owner)
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Quick Start
 
 ```bash
-npm run reset-project
+npx expo start          # start dev server
+npx expo lint           # run linter
+npm test                # run jest tests
+npx tsc --noEmit        # typecheck
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+## Project Structure
 
-### Other setup steps
+```
+src/
+  app/              # Expo Router screens, grouped by role group
+  components/       # UI components, charts, scaffold
+  constants/        # Theme tokens
+  data/             # Demo data (labeled mock)
+  hooks/            use-tokens, use-reduce-motion
+  types/            # Domain types
+  utils/            # format, haptics
+tests/              # Jest test suite
+docs/               # Specification docs
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Acceptance Criteria
 
-## Learn more
+- `npx expo start` runs
+- `npx tsc --noEmit` passes
+- `npx expo lint` passes
+- `npm test` runs and passes
+- PHASE_TRACKER.md updated
+- PART_1_REPORT.md complete
 
-To learn more about developing your project with Expo, look at the following resources:
+## Part 1 Scope Only
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+No real backend, auth, OTP, payments, or QR validation. Demo data explicitly labeled `demo`/`mock`. Honest disabled states. No fake success presented.
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+See `AGENTS.md` for full project rules and development guidelines.

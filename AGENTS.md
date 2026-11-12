@@ -32,10 +32,35 @@ Run lint and typecheck before declaring any task done.
 ## Building with EAS
 
 Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
+
 Docs: https://docs.expo.dev/eas/index.md
 
-## Rules
+## Part 1 Project Rules
 
-- If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
-- Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+These rules apply to Part 1 (foundation + design system + all 8 screens) only and will be superseded by Part 2 rules:
+
+- **No real backend / auth / OTP / payments / QR validation**. All demo data is explicitly labeled `demo` / `mock`. Never present fake successful verification, login, or submission — use honest disabled states and preview modals.
+- **Role variations only**: one shared app; `src/app/(auth)/{login,join}.tsx` for role picker, `(member)/attendance.tsx`, `(reception)/{attendance,fees,renewals}.tsx`, `(owner)/{report,lost}.tsx`. No extra top-level screens.
+- **Business rules fixed**: freezes with approval extend validity; no partial payments; multiple check-ins/day allowed; inactivity = 30 consecutive days without check-in; locked subscription prices; reversals are edits-not; UPI QR ≠ attendance QR.
+- **Demo data honesty**: `demoAttendanceQrPayload` inert; review controls label states ("Review control, removed when the camera lands"); disabled submit with explanatory caption; login shows "No server connected" and a demo workspace picker.
+- **Fonts**: `Barlow_400/500/600/700` + `BarlowCondensed_500/600/700` loaded in root `_layout.tsx` via `useFonts` + `SplashScreen.hide`. Light mode only in Part 1.
+- **Colors**: warm-tinted neutrals, orange accent `#B34511` (WCAG AA 5.6:1 with white). All token contrasts pre-verified.
+- **Navigation**: root `_layout.tsx` with fonts + Stack; `index.tsx` Redirect to `/login`; 4 group `_layout.tsx` files; NativeTabs per role group; icons via `NativeTabs.Trigger.Icon sf/md`.
+- **Screens**: Login (role picker, honest demo preview modals, forgot-password placeholder sheet), Online Joining (3-step join; verification designed, disabled submit "not connected"), QR Attendance (scanner states + review control), Today's Attendance, Fees Entry, Renewal List, Everyday Report, Lost Member List.
+- **Expo SDK 58** template; deps: `expo-haptics`, `react-native-svg`, `@expo-google-fonts/barlow`, `react-native-qrcode-svg`, `@expo/vector-icons@15.1.1`; dev: `jest/jest-expo/@testing-library/react-native/@types/jest`.
+
+## Commands (continued)
+
+```bash
+npx expo-doctor             # diagnose dependency and config issues
+```
+
+Run lint and typecheck before declaring any task done.
+
+## Design System Reference
+
+- **Design direction**: "Iron & Signal" — warm-tinted neutrals, orange accent `#B34511`.
+- **Typography**: Barlow Condensed (display/figures) + Barlow (body).
+- **Tokens**: `src/constants/theme.ts` (Colors/Spacing/Radius/Type/Motion/Easing/Elevation/HitTarget/ControlHeight).
+- **Components**: `src/components/ui/` — text, press-surface, button, text-field, status-badge, card, segmented-tabs (+FilterChip), search-bar, feedback (Loading delay 250ms/min 400ms, SkeletonRow, EmptyState, ErrorState, InlineSpinner), stat-tile (+StatRow), modal-sheet, list-row (+ListGroup/MemberAvatar), qr-display (react-native-qrcode-svg), otp-input, demo-badge, rise-in (entrance animation, reduce-motion aware); charts `src/components/charts/{line-chart,bar-chart}.tsx`; scaffold `src/components/scaffold.tsx`; `src/components/workspace-meta.tsx`.
+- **WCAG**: All token WCAG contrast pairs pass AA.

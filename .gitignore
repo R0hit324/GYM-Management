@@ -30,6 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Hallmark skill local artifacts
+.hallmark/
+
 # local env files
 .env*.local
 
