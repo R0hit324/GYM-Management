@@ -14,7 +14,7 @@ import { View } from 'react-native';
 import { Screen } from '@/components/scaffold';
 import { AppText } from '@/components/ui/text';
 import { Card, Section, Well } from '@/components/ui/card';
-import { StatTile, StatRow } from '@/components/ui/stat-tile';
+import { StatTile, StatRow, DeltaPill, type StatDelta } from '@/components/ui/stat-tile';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { ListGroup, ListRow, RowDivider, MemberAvatar } from '@/components/ui/list-row';
@@ -22,10 +22,21 @@ import { ModalSheet } from '@/components/ui/modal-sheet';
 import { RiseIn } from '@/components/ui/rise-in';
 import { LineChart } from '@/components/charts/line-chart';
 import { BarChart } from '@/components/charts/bar-chart';
+import { ChartCard } from '@/components/charts/chart-card';
 import { WorkspaceMeta, SignOut } from '@/components/workspace-meta';
 import { useTokens } from '@/hooks/use-tokens';
 import { demoOwnershipReport, demoAttendanceTrend, demoCollectionsTrend, demoMembers, demoPayments } from '@/data/demo';
 import { formatCurrency } from '@/utils/format';
+
+/** Deltas are computed from the demo trends — never asserted. */
+function percentDelta(now: number, before: number, unit: string): StatDelta | undefined {
+  if (before <= 0) return undefined;
+  const pct = Math.round(((now - before) / before) * 100);
+  return {
+    label: `${pct >= 0 ? '+' : ''}${pct}% ${unit}`,
+    direction: pct >= 0 ? 'up' : 'down',
+  };
+}
 
 export default function OwnerReportScreen() {
   const tokens = useTokens();
@@ -38,6 +49,23 @@ export default function OwnerReportScreen() {
 
   const collections = demoOwnershipReport.verifiedCollections;
   const pendingAmount = wip.reduce((s, p) => s + p.payable, 0);
+
+  // Membership KPIs — computed from the demo member records.
+  const totalMembers = demoMembers.length;
+  const activeMembers = demoMembers.filter((m) => m.status === 'active').length;
+
+  // Measured deltas, from the demo trends: collections week-over-week, and
+  // the week's attendance shape (last day vs first).
+  const collectionsDelta = percentDelta(
+    demoCollectionsTrend[demoCollectionsTrend.length - 1]?.value ?? 0,
+    demoCollectionsTrend[demoCollectionsTrend.length - 2]?.value ?? 0,
+    'WoW',
+  );
+  const attendanceDelta = percentDelta(
+    demoAttendanceTrend[demoAttendanceTrend.length - 1]?.value ?? 0,
+    demoAttendanceTrend[0]?.value ?? 0,
+    'in week',
+  );
 
   return (
     <Screen
@@ -65,11 +93,14 @@ export default function OwnerReportScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
               <View>
                 <AppText variant="displayXL">{formatCurrency(collections)}</AppText>
-                <AppText variant="label" tone="muted" style={{ marginTop: 2 }}>
+                <AppText variant="label" tone="muted" style={{ marginTop: spacing['3xs'] }}>
                   {report === 'daily' ? 'verified today' : 'Verified collections show here before anything else counts.'}
                 </AppText>
               </View>
-              <StatusBadge label="Verified only" tone="success" small />
+              <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
+                <StatusBadge label="Verified only" tone="success" small />
+                {collectionsDelta && <DeltaPill delta={collectionsDelta} />}
+              </View>
             </View>
           </Card>
           <View style={{ marginTop: spacing.sm }}>
@@ -87,7 +118,11 @@ export default function OwnerReportScreen() {
       </RiseIn>
 
       <RiseIn index={2}>
-        <Section title="Floor and membership" >
+        <Section title="Membership and floor">
+          <StatRow>
+            <StatTile label="Total members" value={String(totalMembers)} />
+            <StatTile label="Active members" value={String(activeMembers)} tone="success" />
+          </StatRow>
           <StatRow>
             <StatTile label="Attendance" value={String(demoOwnershipReport.attendance)} hint="All recorded sessions" />
             <StatTile label="Unique visitors" value={String(demoOwnershipReport.uniqueVisitors)} hint="Different members" />
@@ -101,17 +136,21 @@ export default function OwnerReportScreen() {
       </RiseIn>
 
       <RiseIn index={3}>
-        <Section title="Attendance, last 7 days">
+        <Section style={{ marginTop: spacing.md }}>
           <Card padded>
-            <LineChart points={demoAttendanceTrend} accent={colors.chartPrimary} />
+            <ChartCard title="Attendance, last 7 days" delta={attendanceDelta}>
+              <LineChart points={demoAttendanceTrend} accent={colors.chartPrimary} />
+            </ChartCard>
           </Card>
         </Section>
       </RiseIn>
 
       <RiseIn index={4}>
-        <Section title="Collections by week">
+        <Section style={{ marginTop: spacing.md }}>
           <Card padded>
-            <BarChart points={demoCollectionsTrend} />
+            <ChartCard title="Collections by week" delta={collectionsDelta}>
+              <BarChart points={demoCollectionsTrend} />
+            </ChartCard>
           </Card>
         </Section>
       </RiseIn>
