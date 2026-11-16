@@ -16,6 +16,7 @@ import { AppText } from '@/components/ui/text';
 import { PressSurface } from '@/components/ui/press-surface';
 import { useTokens } from '@/hooks/use-tokens';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
+import { Motion } from '@/constants/theme';
 import { hapticSelect } from '@/utils/haptics';
 
 export interface SegmentOption {
@@ -66,9 +67,12 @@ export function SegmentedTabs(props: {
       position.setValue(toValue);
       return;
     }
-    Animated.timing(position, {
+    Animated.spring(position, {
       toValue,
-      duration: 180,
+      // Near-critically damped: a smooth glide with a barely-there settle,
+      // no visible overshoot. Transform-only, native driver, reduce-motion
+      // handled above by snapping to the target.
+      ...Motion.spring.indicator,
       useNativeDriver: true,
     }).start();
   }, [selectedIndex, segWidth, reduce, position]);

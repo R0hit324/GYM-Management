@@ -28,7 +28,7 @@ export function RiseIn(props: {
     const raf = requestAnimationFrame(() => {
       progress.value = reduce
         ? 1
-        : withDelay((props.index ?? 0) * 40, withTiming(1, { duration: Motion.short + 120, easing: ReEasing.bezier(...Easing.out) }));
+        : withDelay((props.index ?? 0) * Motion.stagger, withTiming(1, { duration: Motion.short + 120, easing: ReEasing.bezier(...Easing.out) }));
     });
     return () => cancelAnimationFrame(raf);
   }, [reduce, progress, props.index]);

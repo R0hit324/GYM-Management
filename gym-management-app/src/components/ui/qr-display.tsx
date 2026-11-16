@@ -1,6 +1,6 @@
 /**
  * QR display. Part 1 renders clearly-labelled demo payloads; real
- * attendance tokens (hashed, 30-60 s expiry, server-validated) and the gym's
+ * attendance tokens (hashed, server-set expiry, server-validated) and the gym's
  * real UPI QR arrive in Parts 4-5. The component itself is payload-agnostic.
  */
 import { View } from 'react-native';

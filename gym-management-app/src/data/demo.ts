@@ -238,7 +238,8 @@ export const demoCollectionsTrend: TrendPoint[] = [
 
 /** Demo-only informational payload shown in the QR modals. Real attendance
  * QR tokens are cryptographically generated server-side in Part 5 and expire
- * in 30-60 s; this static string is NOT a token and never used for anything
+ * on a server-set timer (the duration is not defined in this demo); this
+ * static string is NOT a token and never used for anything
  * except showing the display UI. */
 export const demoAttendanceQrPayload = 'DEMO-PAYLOAD: replaced by server QR tokens in Part 5';
 

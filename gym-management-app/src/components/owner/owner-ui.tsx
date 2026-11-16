@@ -20,16 +20,21 @@
  */
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { Children, type ReactNode } from 'react';
+import { Children, type ReactNode, useContext } from 'react';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
+import { ButtonSurfaceContext } from '@/components/ui/button';
+import { CountUp } from '@/components/ui/motion';
+import { RiseIn } from '@/components/ui/rise-in';
 import { PressSurface } from '@/components/ui/press-surface';
+import { DemoDisclosure } from '@/components/ui/demo-badge';
 import { DotPattern } from '@/components/auth/auth-ui';
 import { useTokens } from '@/hooks/use-tokens';
 import type { TrendPoint } from '@/types/domain';
+import { formatCurrency } from '@/utils/format';
 
 /** Percentage delta helper (same math as the report screen's percentDelta). */
 export function deltaPct(now: number, before: number): number | undefined {
@@ -145,6 +150,8 @@ export function OwnerHeader(props: {
 export function PrimaryMetricCard(props: {
   caption: string;
   value: string;
+  /** Optional numeric source: when given, the figure counts up to it (Vanguard style). */
+  countValue?: number;
   deltaPct?: number;
   deltaUnit: string;
   supporting: string;
@@ -160,28 +167,42 @@ export function PrimaryMetricCard(props: {
         <AppText variant="label" style={{ color: colors.ownerHeroMuted }}>
           {props.caption}
         </AppText>
-        {props.deltaPct !== undefined && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['3xs'] }}>
-            <Ionicons
-              name={props.deltaPct >= 0 ? 'trending-up' : 'trending-down'}
-              size={15}
-              color={props.deltaPct >= 0 ? colors.ownerSuccess : colors.ownerError}
-            />
-            <AppText
-              variant="label"
-              style={{
-                color: props.deltaPct >= 0 ? colors.ownerSuccess : colors.ownerError,
-                fontWeight: '600',
-              }}>
-              {props.deltaPct >= 0 ? '+' : ''}
-              {props.deltaPct}% {props.deltaUnit}
-            </AppText>
-          </View>
-        )}
+        {props.deltaPct !== undefined && (() => {
+          const pct = props.deltaPct;
+          return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['3xs'] }}>
+              <Ionicons
+                name={pct >= 0 ? 'trending-up' : 'trending-down'}
+                size={15}
+                color={pct >= 0 ? colors.ownerSuccess : colors.ownerError}
+              />
+              <CountUp
+                value={Math.abs(pct)}
+                format={(n) => `${pct >= 0 ? '+' : '−'}${Math.abs(n)}% ${props.deltaUnit}`}
+                variant="label"
+                style={{
+                  color: pct >= 0 ? colors.ownerSuccess : colors.ownerError,
+                  fontWeight: '600',
+                }}
+              />
+            </View>
+          );
+        })()}
       </View>
-      <AppText variant="displayXL" style={{ color: colors.ownerAccent, marginTop: spacing['3xs'] }}>
-        {props.value}
-      </AppText>
+      {props.countValue !== undefined ? (
+        // Count-up settles exactly on the real figure; the a11y label above
+        // and the displayed end state always read the exact amount.
+        <CountUp
+          value={props.countValue}
+          format={formatCurrency}
+          variant="displayXL"
+          style={{ color: colors.ownerAccent, marginTop: spacing['3xs'] }}
+        />
+      ) : (
+        <AppText variant="displayXL" style={{ color: colors.ownerAccent, marginTop: spacing['3xs'] }}>
+          {props.value}
+        </AppText>
+      )}
       <AppText variant="caption" style={{ color: colors.ownerHeroMuted, marginTop: spacing['3xs'] }}>
         {props.supporting}
       </AppText>
@@ -212,51 +233,51 @@ export function AttendanceWeekStrip(props: { points: TrendPoint[]; caption?: str
           const prev = i > 0 ? props.points[i - 1].value : undefined;
           const pct = prev !== undefined ? deltaPct(p.value, prev) : undefined;
           return (
-            <View
-              key={`${p.label}-${i}`}
-              accessibilityLabel={`${p.fullLabel ?? p.label}: ${p.value} attendances${pct !== undefined ? `, ${pct >= 0 ? '+' : ''}${pct}% vs the previous day` : ''}`}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                borderRadius: radius.md,
-                overflow: 'hidden',
-                backgroundColor: highlighted ? undefined : colors.ownerCard,
-                borderWidth: 1,
-                borderColor: highlighted ? undefined : colors.ownerCardRule,
-                alignItems: 'center',
-                paddingTop: spacing.sm,
-                paddingBottom: spacing.sm,
-                paddingHorizontal: spacing['3xs'],
-              }}>
-              {highlighted && <OwnerGradient radius={radius.md} id="owner-day-grad" />}
-              <AppText variant="caption" style={{ color: highlighted ? colors.ownerGradInk : colors.ownerHeroMuted }}>
-                {p.label}
-              </AppText>
-              <AppText
-                variant="figureSmall"
+            <RiseIn key={`${p.label}-${i}`} index={i} style={{ flex: 1, minWidth: 0 }}>
+              <View
+                accessibilityLabel={`${p.fullLabel ?? p.label}: ${p.value} attendances${pct !== undefined ? `, ${pct >= 0 ? '+' : ''}${pct}% vs the previous day` : ''}`}
                 style={{
-                  color: highlighted ? colors.ownerGradInk : colors.ownerHeroInk,
-                  marginTop: spacing['3xs'],
+                  borderRadius: radius.md,
+                  overflow: 'hidden',
+                  backgroundColor: highlighted ? undefined : colors.ownerCard,
+                  borderWidth: 1,
+                  borderColor: highlighted ? undefined : colors.ownerCardRule,
+                  alignItems: 'center',
+                  paddingTop: spacing.sm,
+                  paddingBottom: spacing.sm,
+                  paddingHorizontal: spacing['3xs'],
                 }}>
-                {p.value}
-              </AppText>
-              <AppText
-                variant="caption"
-                numberOfLines={1}
-                style={{
-                  color: highlighted
-                    ? colors.ownerGradInk
-                    : pct === undefined
-                      ? colors.ownerHeroMuted
-                      : pct >= 0
-                        ? colors.ownerSuccess
-                        : colors.ownerError,
-                  marginTop: spacing['3xs'],
-                  fontWeight: pct !== undefined && !highlighted ? '600' : '400',
-                }}>
-                {pct !== undefined ? `${pct >= 0 ? '+' : ''}${pct}%` : '—'}
-              </AppText>
-            </View>
+                {highlighted && <OwnerGradient radius={radius.md} id="owner-day-grad" />}
+                <AppText variant="caption" style={{ color: highlighted ? colors.ownerGradInk : colors.ownerHeroMuted }}>
+                  {p.label}
+                </AppText>
+                <CountUp
+                  value={p.value}
+                  delay={i * 60}
+                  variant="figureSmall"
+                  style={{
+                    color: highlighted ? colors.ownerGradInk : colors.ownerHeroInk,
+                    marginTop: spacing['3xs'],
+                  }}
+                />
+                <AppText
+                  variant="caption"
+                  numberOfLines={1}
+                  style={{
+                    color: highlighted
+                      ? colors.ownerGradInk
+                      : pct === undefined
+                        ? colors.ownerHeroMuted
+                        : pct >= 0
+                          ? colors.ownerSuccess
+                          : colors.ownerError,
+                    marginTop: spacing['3xs'],
+                    fontWeight: pct !== undefined && !highlighted ? '600' : '400',
+                  }}>
+                  {pct !== undefined ? `${pct >= 0 ? '+' : ''}${pct}%` : '—'}
+                </AppText>
+              </View>
+            </RiseIn>
           );
         })}
       </View>
@@ -378,16 +399,21 @@ export function AttentionDivider() {
 
 /**
  * Owner-screen scaffold used by every owner section: dark charcoal ground,
- * page title directly below the status bar (white on the dark ground —
- * always visible), and the light content panel with large rounded top
- * corners. The panel carries the same subtle dot pattern as the Login
- * screen's upper zone (reused `DotPattern`, very light grey, behind the
- * content); cards rendered on it have solid backgrounds so text stays
- * readable.
+ * the redesigned page header (eyebrow in the electric-blue accent, larger
+ * condensed-800 white title, short accent rule, muted subtitle — the same
+ * header family as the Receptionist/Member screens), and the light content
+ * panel with large rounded top corners. The panel is a LIGHT button
+ * surface: the surface-aware components (stat tiles, list groups, search
+ * bars, buttons) switch to the light palette inside it. The panel carries
+ * the same subtle dot pattern as the Login screen's upper zone (reused
+ * `DotPattern`, very light grey, behind the content); cards rendered on it
+ * have solid backgrounds so text stays readable.
  */
 export function OwnerScreen(props: {
   title: string;
   subtitle?: string;
+  /** Optional uppercase eyebrow above the title (accent blue). */
+  eyebrow?: string;
   children: ReactNode;
   demo?: boolean;
   actions?: ReactNode;
@@ -401,48 +427,65 @@ export function OwnerScreen(props: {
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 118 }}
         keyboardShouldPersistTaps="handled">
-        {/* Page header on the dark ground: white title, muted subtitle. */}
+        {/* Page header on the dark ground: eyebrow (optional), large
+            condensed white title, short electric-blue accent rule, muted
+            subtitle — the shared header family. */}
         <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm }}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <AppText variant="title" style={{ color: colors.ownerHeroInk }}>
+              {props.eyebrow && (
+                <AppText
+                  variant="label"
+                  style={{ color: colors.ownerAccent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                  {props.eyebrow}
+                </AppText>
+              )}
+              <AppText variant="display" style={{ color: colors.ownerHeroInk, marginTop: props.eyebrow ? spacing['3xs'] : 0 }}>
                 {props.title}
               </AppText>
+              <View
+                style={{
+                  width: 30,
+                  height: 3,
+                  borderRadius: tokens.radius.pill,
+                  backgroundColor: colors.ownerAccent,
+                  marginTop: spacing.xs,
+                }}
+              />
               {props.subtitle && (
-                <AppText variant="label" style={{ color: colors.ownerHeroMuted, marginTop: spacing['3xs'] }}>
+                <AppText variant="label" style={{ color: colors.ownerHeroMuted, marginTop: spacing.xs }}>
                   {props.subtitle}
                 </AppText>
               )}
             </View>
             {props.actions}
           </View>
-          {props.demo && (
-            <AppText variant="caption" style={{ color: colors.ownerHeroMuted, marginTop: spacing.xs }}>
-              Demo session — all numbers are sample data
-            </AppText>
-          )}
+          {props.demo && <DemoDisclosure />}
         </View>
 
-        {/* Light content panel with the shared subtle dot pattern. */}
-        <View
-          style={{
-            flex: 1,
-            marginTop: spacing.md,
-            backgroundColor: colors.ownerPanelBg,
-            borderTopLeftRadius: tokens.radius.authPanel,
-            borderTopRightRadius: tokens.radius.authPanel,
-            overflow: 'hidden',
-          }}>
-          <DotPattern dot={colors.ownerDot} gap={16} />
+        {/* Light content panel with the shared subtle dot pattern. The
+            panel declares the LIGHT button surface for everything on it. */}
+        <ButtonSurfaceContext.Provider value="light">
           <View
             style={{
-              paddingHorizontal: spacing.lg,
-              paddingTop: spacing.md,
-              paddingBottom: spacing.xl,
+              flex: 1,
+              marginTop: spacing.md,
+              backgroundColor: colors.ownerPanelBg,
+              borderTopLeftRadius: tokens.radius.authPanel,
+              borderTopRightRadius: tokens.radius.authPanel,
+              overflow: 'hidden',
             }}>
-            {props.children}
+            <DotPattern dot={colors.ownerDot} gap={16} />
+            <View
+              style={{
+                paddingHorizontal: spacing.lg,
+                paddingTop: spacing.md,
+                paddingBottom: spacing.xl,
+              }}>
+              {props.children}
+            </View>
           </View>
-        </View>
+        </ButtonSurfaceContext.Provider>
       </ScrollView>
     </View>
   );
@@ -540,6 +583,10 @@ type StatTone = 'neutral' | 'blue' | 'softBlue' | 'mint' | 'violet' | 'cyan' | '
 export function OwnerStatTile(props: {
   label: string;
   value: string;
+  /** Optional numeric source: when given, the figure counts up to it. */
+  count?: number;
+  /** Format the count as Indian currency (₹) rather than a plain number. */
+  countCurrency?: boolean;
   hint?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   tone?: StatTone;
@@ -559,27 +606,49 @@ export function OwnerStatTile(props: {
   };
   const valueColor = toneMap[props.tone ?? 'neutral'];
 
+  // Surface-aware lift (Stage 8): on the light content panel the white
+  // tile gets the subtle navy-tinted elevation so it reads as a raised
+  // surface. The Owner dashboard renders outside the light provider
+  // (default 'dark'), so its tiles stay exactly as approved.
+  const light = useContext(ButtonSurfaceContext) === 'light';
+
   return (
     <View
       accessibilityLabel={`${props.label}: ${props.value}${props.delta ? `, ${props.delta.direction === 'up' ? 'up' : 'down'} ${props.delta.label}` : ''}${props.hint ? `, ${props.hint}` : ''}`}
       accessible
-      style={{
-        flex: 1,
-        minWidth: 0,
-        backgroundColor: colors.ownerPanel,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: colors.ownerRule,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-        gap: spacing['3xs'],
-      }}>
+      style={[
+        {
+          flex: 1,
+          minWidth: 0,
+          backgroundColor: colors.ownerPanel,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: colors.ownerRule,
+          paddingVertical: spacing.sm,
+          paddingHorizontal: spacing.md,
+          gap: spacing['3xs'],
+        },
+        light ? tokens.elevation.lightCard : null,
+      ]}>
       {props.icon && (
         <Ionicons name={props.icon} size={15} color={valueColor} />
       )}
-      <AppText variant="figure" numberOfLines={1} adjustsFontSizeToFit style={{ color: valueColor }}>
-        {props.value}
-      </AppText>
+      {props.count !== undefined ? (
+        // Counts up to the real figure and sits exactly on it; the tile's
+        // accessibility label always reads the exact final value.
+        <CountUp
+          value={props.count}
+          format={props.countCurrency ? formatCurrency : String}
+          variant="figure"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={{ color: valueColor }}
+        />
+      ) : (
+        <AppText variant="figure" numberOfLines={1} adjustsFontSizeToFit style={{ color: valueColor }}>
+          {props.value}
+        </AppText>
+      )}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
         <AppText variant="caption" style={{ color: colors.ownerInkMuted, flexShrink: 1 }}>
           {props.label}
@@ -638,7 +707,9 @@ export function OwnerStatRow({ children }: { children: ReactNode[] }) {
   );
 }
 
-/** Owner-themed chart card: solid white, dark heading, owner tokens. */
+/** Owner-themed chart card: solid white, heading in the steel-navy
+ * section accent, owner tokens — same redesigned card recipe on the
+ * light surface (flat look kept on a pinned dark surface). */
 export function OwnerChartCard(props: {
   title: string;
   delta?: { label: string; direction: 'up' | 'down' };
@@ -647,19 +718,23 @@ export function OwnerChartCard(props: {
 }) {
   const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
 
   return (
     <View
-      style={{
-        gap: spacing.sm,
-        backgroundColor: colors.ownerPanel,
-        borderRadius: radius.lg,
-        borderWidth: 1,
-        borderColor: colors.ownerRule,
-        padding: spacing.md,
-      }}>
+      style={[
+        {
+          gap: spacing.sm,
+          backgroundColor: colors.ownerPanel,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: light ? colors.ownerDot : colors.ownerRule,
+          padding: spacing.md,
+        },
+        light ? tokens.elevation.lightCard : null,
+      ]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-        <AppText variant="heading" style={{ color: colors.ownerInk }}>
+        <AppText variant="heading" style={{ color: light ? colors.ownerBlueSoft : colors.ownerInk }}>
           {props.title}
         </AppText>
         {props.delta && <OwnerDeltaPill delta={props.delta} surface="light" />}
@@ -674,16 +749,22 @@ export function OwnerChartCard(props: {
   );
 }
 
-/** Section heading on the light panel: dark charcoal, semibold. */
+/**
+ * Section heading on the light panel: restrained steel-navy blue
+ * (`ownerBlueSoft`) matching the WorkspaceSection hierarchy; a pinned
+ * dark surface keeps the charcoal heading. */
 export function OwnerSection(props: { title?: string; action?: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const tokens = useTokens();
   const { spacing } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
   return (
     <View style={[{ marginTop: spacing.lg, gap: spacing.sm }, props.style]}>
       {(props.title || props.action) && (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
           {props.title && (
-            <AppText variant="heading" style={{ color: tokens.colors.ownerInk }}>
+            <AppText
+              variant="heading"
+              style={{ color: light ? tokens.colors.ownerBlueSoft : tokens.colors.ownerInk }}>
               {props.title}
             </AppText>
           )}
@@ -695,10 +776,15 @@ export function OwnerSection(props: { title?: string; action?: ReactNode; childr
   );
 }
 
-/** Solid white card on the light panel (the Fino content card). */
+/**
+ * Solid white card on the light panel (the Fino content card) — same
+ * redesigned recipe as WorkspaceCard: larger radius, clearly visible
+ * border and the navy-tinted lift on the light surface; a pinned dark
+ * surface keeps the previous flat look. */
 export function OwnerCard(props: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
   return (
     <View
       style={[
@@ -706,9 +792,10 @@ export function OwnerCard(props: { children: ReactNode; style?: StyleProp<ViewSt
           backgroundColor: colors.ownerPanel,
           borderRadius: radius.lg,
           borderWidth: 1,
-          borderColor: colors.ownerRule,
+          borderColor: light ? colors.ownerDot : colors.ownerRule,
           padding: spacing.md,
         },
+        light ? tokens.elevation.lightCard : null,
         props.style,
       ]}>
       {props.children}
@@ -716,16 +803,21 @@ export function OwnerCard(props: { children: ReactNode; style?: StyleProp<ViewSt
   );
 }
 
-/** Light tinted well on the light panel (supporting explanations). */
+/** Light tinted well on the light panel (supporting explanations). On the
+ * light surface a hairline border keeps the inset well defined; a pinned
+ * dark surface keeps the borderless well. */
 export function OwnerWell(props: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
   return (
     <View
       style={[
         {
           backgroundColor: colors.ownerPanelMuted,
           borderRadius: radius.md,
+          borderWidth: light ? 1 : 0,
+          borderColor: light ? colors.ownerRule : undefined,
           padding: spacing.md,
         },
         props.style,
@@ -761,18 +853,27 @@ export function OwnerStatusText(props: { label: string; tone: 'up' | 'down' | 'n
 export function OwnerListGroup(props: { children: ReactNode; label?: string }) {
   const tokens = useTokens();
   const { colors, radius } = tokens;
+  // Surface-aware lift (Stage 8): same reasoning as OwnerStatTile — only
+  // the light-panel (Receptionist) context adds the subtle elevation.
+  const light = useContext(ButtonSurfaceContext) === 'light';
+  // Shadow wrapper and clipped content are SEPARATE views: iOS masks a
+  // view's own shadow when `overflow: 'hidden'` is on the same layer, so
+  // the elevation would be invisible. The outer view carries surface,
+  // border and shadow; the inner view does the row clipping.
   return (
     <View
       accessibilityRole="summary"
       accessibilityLabel={props.label}
-      style={{
-        backgroundColor: colors.ownerPanel,
-        borderRadius: radius.lg,
-        borderWidth: 1,
-        borderColor: colors.ownerRule,
-        overflow: 'hidden',
-      }}>
-      {props.children}
+      style={[
+        {
+          backgroundColor: colors.ownerPanel,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: colors.ownerRule,
+        },
+        light ? tokens.elevation.lightCard : null,
+      ]}>
+      <View style={{ borderRadius: radius.lg - 1, overflow: 'hidden' }}>{props.children}</View>
     </View>
   );
 }
@@ -887,19 +988,23 @@ export function OwnerEmptyState(props: {
 }) {
   const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
   return (
     <View
       accessibilityRole="summary"
-      style={{
-        backgroundColor: colors.ownerPanel,
-        borderRadius: radius.lg,
-        borderWidth: 1,
-        borderColor: colors.ownerRule,
-        padding: spacing.xl,
-        gap: spacing.xs,
-        alignItems: 'center',
-        marginTop: spacing.md,
-      }}>
+      style={[
+        {
+          backgroundColor: colors.ownerPanel,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: light ? colors.ownerDot : colors.ownerRule,
+          padding: spacing.xl,
+          gap: spacing.xs,
+          alignItems: 'center',
+          marginTop: spacing.md,
+        },
+        light ? tokens.elevation.lightCard : null,
+      ]}>
       <View
         style={{
           width: 52,

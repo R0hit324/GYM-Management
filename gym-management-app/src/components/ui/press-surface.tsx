@@ -7,12 +7,11 @@
  */
 import { useCallback, useRef } from 'react';
 import { Pressable, PressableProps, GestureResponderEvent, StyleProp, View, ViewStyle, StyleSheet } from 'react-native';
-import { useAnimatedStyle, useSharedValue, withTiming, Easing as ReEasing } from 'react-native-reanimated';
+import { useAnimatedStyle, useSharedValue, withSpring, withTiming, Easing as ReEasing } from 'react-native-reanimated';
 
 import { Easing, Motion } from '@/constants/theme';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { hapticPress } from '@/utils/haptics';
-
 interface PressSurfaceProps extends Omit<PressableProps, 'style'> {
   children?: React.ReactNode;
   scaleOnPress?: boolean;
@@ -58,9 +57,11 @@ export function PressSurface({
     (e: GestureResponderEvent) => {
       pressedRef.current = false;
       if (!reduceMotion) {
-        // Reanimated shared values are mutable by design; this compiler rule targets plain React state.
+        // Release springs back with a barely-there overshoot (Vanguard press
+        // feel) — visually a micro-settle, never a bounce. Shared values are
+        // mutable by design; this compiler rule targets plain React state.
         // eslint-disable-next-line react-hooks/immutability
-        active.value = withTiming(0, { duration: Motion.micro * 1.4, easing: ReEasing.bezier(...Easing.out) });
+        active.value = withSpring(0, Motion.spring.press);
       }
       onPressOut?.(e as never);
     },

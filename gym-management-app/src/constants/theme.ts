@@ -208,6 +208,12 @@ export type TypeToken = keyof typeof Type;
  * Motion: smooth and subtle. Presses compress slightly (0.98); RiseIn
  * returns as a gentle fade-and-rise entrance; functional overlays keep
  * their slide. Reduce-motion collapses everything to instant.
+ *
+ * App-wide motion contract (additive): every animation in the app derives
+ * its timing/easing/spring from THIS object — no ad-hoc durations in
+ * screens. Charts draw with `chartDraw`, figures count with `count`,
+ * lists stagger by `stagger`, and the four spring recipes cover press
+ * release, tab glide, pop-in and data morphs.
  */
 export const Motion = {
   micro: 120,
@@ -216,6 +222,26 @@ export const Motion = {
   exitFactor: 0.65,
   pressScale: 0.98,
   riseDistance: 10,
+  // Chart entrance/draw and figure count-up durations.
+  chartDraw: 520,
+  // Moderate count-up: ~1.6s ease-out for dashboard metrics (per spec 1.5-2s).
+  count: 1600,
+  // Modal/sheet enter (spec 250-350ms); exits at exitFactor of this.
+  sheet: 300,
+  // Per-item stagger step (RiseIn indices, chart value labels).
+  stagger: 40,
+  // Crossfade/swap duration when data changes without a fresh mount
+  // (charts morph between data states instead of replaying the entrance).
+  swap: 280,
+  /** Spring recipes (Reanimated `withSpring` config / RN Animated spring). */
+  spring: {
+    /** Press release: barely-there overshoot settle. */
+    press: { damping: 18, stiffness: 260, mass: 0.7 },
+    /** Tab/segment highlight glide (RN Animated spring params). */
+    indicator: { speed: 26, bounciness: 4 },
+    /** Small pop-ins: OTP digits, password eye, confirmation marks. */
+    pop: { damping: 14, stiffness: 220, mass: 0.8 },
+  } as const,
 } as const;
 
 export type MotionToken = keyof typeof Motion;
@@ -235,6 +261,16 @@ export const Elevation = {
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 14,
     elevation: 3,
+  },
+  /** Cards on the LIGHT content panels (Receptionist/Member/Owner panel).
+   * Navy-tinted and much softer than `card` (which targets the dark
+   * ground): a subtle but clearly visible lift, not a dark halo. */
+  lightCard: {
+    shadowColor: '#12203F',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 16,
+    elevation: 5,
   },
   floating: {
     shadowColor: '#000000',

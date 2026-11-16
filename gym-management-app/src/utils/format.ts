@@ -18,8 +18,8 @@ export function formatTime(iso: string): string {
   return `${h}:${m} ${suffix}`;
 }
 
-export function formatDate(iso: string): string {
-  const d = new Date(iso);
+export function formatDate(iso: string | Date): string {
+  const d = iso instanceof Date ? iso : new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')} ${d.toLocaleString('en-IN', { month: 'short' })} ${d.getFullYear()}`;
 }
 
@@ -46,6 +46,15 @@ export function passwordIssues(value: string): string[] {
 export function daysBetween(iso: string, now = new Date()): number {
   const d = new Date(iso);
   return Math.round((d.getTime() - now.getTime()) / 86400000);
+}
+
+/** True when the record's timestamp falls on the same local calendar day as
+ * the reference (today by default). Compares year/month/day components, so
+ * a 23:59 check-in and a 00:01 check-in on the same date behave identically
+ * regardless of timezone offsets. */
+export function isSameLocalDay(iso: string, ref = new Date()): boolean {
+  const d = new Date(iso);
+  return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() && d.getDate() === ref.getDate();
 }
 
 /** Rendering intent only: the real "expired" rule is membershipEnd < today

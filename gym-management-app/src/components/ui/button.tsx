@@ -2,7 +2,14 @@
  * Buttons. One filled primary recipe per screen (styles: 'primary'),
  * secondaries are outlined ('secondary') or text ('ghost'); 'danger' is
  * reserved for destructive intent only.
+ *
+ * Surface-aware (Stage 8): the palette also depends on the surface the
+ * button sits on. Default is 'dark' (the dark sheets, dark grounds and
+ * dark headers keep today's styling); WorkspaceScreen provides 'light'
+ * so buttons on the light content panels get readable inks instead of
+ * the dark-surface near-white label. ModalSheet re-asserts 'dark'.
  */
+import { createContext, useContext } from 'react';
 import {
   ActivityIndicator,
   StyleProp,
@@ -19,6 +26,15 @@ import { useTokens } from '@/hooks/use-tokens';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'onAccent' | 'primarySoft';
 export type ButtonSize = 'medium' | 'small';
+export type ButtonSurface = 'light' | 'dark';
+
+/**
+ * Declares the surface buttons render on: 'light' = the light content
+ * panel (white/near-white cards, wells), 'dark' = dark grounds, sheets
+ * and headers. Default 'dark' preserves every existing dark-surface
+ * usage; only WorkspaceScreen overrides it to 'light'.
+ */
+export const ButtonSurfaceContext = createContext<ButtonSurface>('dark');
 
 interface ButtonProps {
   label: string;
@@ -48,11 +64,20 @@ export function Button(
   }: ButtonProps) {
   const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
 
-  const palette: Record<ButtonVariant, { bg?: string; fg: string; border?: string; borderWidth?: number }> = {
-    // Coach Board: the primary is the one amber fill at every size, and its
-    // label is the dark ink (verified ≥4.5:1 at any size — no more
-    // deeper-shade trick for small buttons).
+  interface Palette {
+    bg?: string;
+    fg: string;
+    border?: string;
+    borderWidth?: number;
+    lift?: boolean; // subtle elevation for filled/outlined light controls
+  }
+
+  // Coach Board: the primary is the one amber fill at every size, and its
+  // label is the dark ink (verified ≥4.5:1 at any size — no more
+  // deeper-shade trick for small buttons).
+  const darkPalette: Record<ButtonVariant, Palette> = {
     primary: { bg: colors.accent, fg: colors.accentInk },
     secondary: { fg: colors.ink, border: colors.ruleStrong, borderWidth: 1 },
     ghost: { fg: colors.accentBright },
@@ -64,25 +89,49 @@ export function Button(
     primarySoft: { bg: colors.authAccent, fg: colors.authAccentInk },
   };
 
-  const v = palette[variant];
+  // Light-panel palette (Stage 8): no transparent secondary on white
+  // cards — a white fill with dark ink, a visible border and a subtle
+  // lift; ghost reads as restrained blue on white; the amber primary
+  // gets a subtle elevation so it reads as a raised control. Fills
+  // (primary, danger, onAccent, primarySoft) keep their labels identical.
+  const lightPalette: Record<ButtonVariant, Palette> = {
+    primary: { bg: colors.accent, fg: colors.accentInk, lift: true },
+    secondary: {
+      bg: colors.ownerPanel,
+      fg: colors.ownerInk,
+      border: colors.ownerDot,
+      borderWidth: 1,
+      lift: true,
+    },
+    ghost: { fg: colors.ownerAccentDeep },
+    danger: darkPalette.danger,
+    onAccent: darkPalette.onAccent,
+    primarySoft: darkPalette.primarySoft,
+  };
+
+  const v = (light ? lightPalette : darkPalette)[variant];
   const height = size === 'medium' ? tokens.control.button : tokens.control.buttonSmall;
   const ph = size === 'medium' ? spacing.lg : spacing.md;
 
-  const shell: StyleProp<ViewStyle> = {
-    backgroundColor: v.bg ?? 'transparent',
-    borderWidth: v.borderWidth ?? (v.border ? 1 : 0),
-    borderColor: v.border,
-    // primarySoft is the auth screens' white pill — fully rounded, plain
-    // sans label (the reference's CTA); every other variant stays sm/condensed.
-    borderRadius: variant === 'primarySoft' ? radius.pill : radius.sm,
-    minHeight: height,
-    paddingHorizontal: ph,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-    opacity: disabled || loading ? 0.55 : 1,
-  };
+  const shell: StyleProp<ViewStyle> = [
+    {
+      backgroundColor: v.bg ?? 'transparent',
+      borderWidth: v.borderWidth ?? (v.border ? 1 : 0),
+      borderColor: v.border,
+      // Redesigned control language: every button is a fully rounded pill
+      // (the auth screens' CTA shape, now the app-wide system) — height,
+      // padding and label tokens unchanged.
+      borderRadius: radius.pill,
+      minHeight: height,
+      paddingHorizontal: ph,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+      opacity: disabled || loading ? 0.55 : 1,
+    },
+    v.lift && !disabled && !loading ? tokens.elevation.lightCard : null,
+  ];
 
   const rootStyle: StyleProp<ViewStyle> = [fullWidth && { alignSelf: 'stretch' }, style];
   // Coach Board buttons: Barlow Condensed 800 in title case, untracked.
@@ -120,7 +169,12 @@ export function Button(
   );
 }
 
-/** Icon-only action (header close, contact). Visual 24px; hit target 44. */
+/** Icon-only action (header close, contact). Visual: a 34px circular
+ * touch surface on the light panel (clearly a control, not floating
+ * text); bare icon on dark grounds/sheets as approved. Hit target 44.
+ * Tone map is surface-aware: on the light panel the 'ink'/'muted' inks
+ * switch to the owner palette's dark greys — the dark-surface greys
+ * (#A0A6AE) are too faint on white. */
 export function IconButton(props: {
   name: keyof typeof Ionicons.glyphMap;
   onPress?: () => void;
@@ -130,9 +184,10 @@ export function IconButton(props: {
 }) {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
+  const light = useContext(ButtonSurfaceContext) === 'light';
   const color = {
-    ink: colors.ink,
-    muted: colors.inkMuted,
+    ink: light ? colors.ownerInk : colors.ink,
+    muted: light ? colors.ownerInkMuted : colors.inkMuted,
     accent: colors.accent,
     inverse: colors.accentInk,
     danger: colors.danger,
@@ -146,7 +201,21 @@ export function IconButton(props: {
       hitPadding={spacing.xs}
       scaleOnPress={false}
       style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-      <Ionicons name={props.name} size={22} color={color} />
+      {light ? (
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: tokens.radius.pill,
+            backgroundColor: colors.ownerPanelMuted,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Ionicons name={props.name} size={20} color={color} />
+        </View>
+      ) : (
+        <Ionicons name={props.name} size={22} color={color} />
+      )}
     </PressSurface>
   );
 }

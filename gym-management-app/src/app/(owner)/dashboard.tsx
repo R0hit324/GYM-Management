@@ -22,7 +22,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
+import { ButtonSurfaceContext } from '@/components/ui/button';
 import { ModalSheet } from '@/components/ui/modal-sheet';
+import { RiseIn } from '@/components/ui/rise-in';
 import { DemoBadge } from '@/components/ui/demo-badge';
 import {
   OwnerHeader,
@@ -130,39 +132,64 @@ export default function OwnerDashboardScreen() {
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 118 }}
         keyboardShouldPersistTaps="handled">
-        {/* Dark upper zone: page title, header, hero, week strip */}
+        {/* Dark upper zone: page title, header, hero, week strip — staggered entrance */}
         <View style={{ paddingHorizontal: spacing.lg }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingTop: spacing.sm, paddingBottom: spacing['3xs'] }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <AppText variant="title" style={{ color: colors.ownerHeroInk }}>
-                Overview
-              </AppText>
-              <AppText variant="caption" style={{ color: colors.ownerHeroMuted, marginTop: spacing['3xs'] }}>
-                Pulse Gym · owner console · demo data
+          <RiseIn>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingTop: spacing.sm, paddingBottom: spacing['3xs'] }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText variant="display" style={{ color: colors.ownerHeroInk }}>
+                  Overview
+                </AppText>
+                {/* Short accent rule — the shared header signature. */}
+                <View
+                  style={{
+                    width: 30,
+                    height: 3,
+                    borderRadius: tokens.radius.pill,
+                    backgroundColor: colors.ownerAccent,
+                    marginTop: spacing.xs,
+                    marginBottom: spacing['3xs'],
+                  }}
+                />
+                <AppText variant="caption" style={{ color: colors.ownerHeroMuted }}>
+                  Pulse Gym · owner console · demo data
+                </AppText>
+              </View>
+              <DemoBadge small label="Demo data" />
+            </View>
+          </RiseIn>
+          <RiseIn index={1}>
+            <OwnerHeader attentionCount={attentionCount} onPressBell={() => setNotificationsOpen(true)} />
+          </RiseIn>
+
+          <RiseIn index={2}>
+            <PrimaryMetricCard
+              caption="Revenue this month · verified only"
+              value={formatCurrency(monthRevenue)}
+              countValue={monthRevenue}
+              deltaPct={revenueDelta}
+              deltaUnit="WoW"
+              supporting={`Sample ledger: ${formatCurrency(demoOwnershipReport.verifiedCollections)} for the day · ${formatCurrency(queuedAmount)} in the verification queue`}
+            />
+          </RiseIn>
+
+          <RiseIn index={3}>
+            <View style={{ marginBottom: spacing.xs }}>
+              <AppText variant="label" style={{ color: colors.ownerHeroMuted }}>
+                Attendance · last recorded week
               </AppText>
             </View>
-            <DemoBadge small label="Demo data" />
-          </View>
-          <OwnerHeader attentionCount={attentionCount} onPressBell={() => setNotificationsOpen(true)} />
-
-          <PrimaryMetricCard
-            caption="Revenue this month · verified only"
-            value={formatCurrency(monthRevenue)}
-            deltaPct={revenueDelta}
-            deltaUnit="WoW"
-            supporting={`${formatCurrency(demoOwnershipReport.verifiedCollections)} collected today · ${formatCurrency(queuedAmount)} in the verification queue`}
-          />
-
-          <View style={{ marginBottom: spacing.xs }}>
-            <AppText variant="label" style={{ color: colors.ownerHeroMuted }}>
-              Attendance · last recorded week
-            </AppText>
-          </View>
-          <AttendanceWeekStrip points={weekPoints} />
+          </RiseIn>
+          <RiseIn index={4}>
+            <AttendanceWeekStrip points={weekPoints} />
+          </RiseIn>
         </View>
 
-        {/* White rounded panel: needs your attention */}
-        <AttentionPanel
+        {/* White rounded panel: needs your attention. The panel is a LIGHT
+            button surface (same provider the other scaffolds use). */}
+        <RiseIn index={5}>
+          <ButtonSurfaceContext.Provider value="light">
+            <AttentionPanel
           title="Needs your attention"
           subtitle={
             allClear
@@ -204,7 +231,9 @@ export default function OwnerDashboardScreen() {
           <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.md }}>
             Overdue-fee alerts arrive with the payments backend (Parts 2-3). Nothing here is invented.
           </AppText>
-        </AttentionPanel>
+            </AttentionPanel>
+          </ButtonSurfaceContext.Provider>
+        </RiseIn>
       </ScrollView>
 
       <OwnerBottomNavigation active="overview" />

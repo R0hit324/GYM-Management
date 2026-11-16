@@ -4,10 +4,12 @@
  * client never trusts a code here — Part 1 submits nothing).
  * `appearance='auth'` renders the reference's charcoal boxes with the white
  * focused border (additive; default keeps the workspace styling).
+ * Motion: each digit pops gently when it lands (transform-only).
  */
 import { useRef, useState, type ComponentRef } from 'react';
 import { TextInput, View } from 'react-native';
 
+import { Pop } from '@/components/ui/motion';
 import { useTokens } from '@/hooks/use-tokens';
 
 export function OtpInput(props: {
@@ -39,47 +41,49 @@ export function OtpInput(props: {
   return (
     <View accessibilityLabel="One-time code entry" style={{ flexDirection: 'row', gap: spacing.xs }}>
       {values.map((v, i) => (
-        <TextInput
-          key={i}
-          ref={(r) => {
-            refs.current[i] = r;
-          }}
-          accessibilityLabel={`Digit ${i + 1}`}
-          value={v}
-          keyboardType="number-pad"
-          textContentType="oneTimeCode"
-          inputMode="numeric"
-          maxLength={length}
-          onChangeText={(t) => setDigit(i, t)}
-          onKeyPress={({ nativeEvent }) => {
-            if (nativeEvent.key === 'Backspace' && !values[i] && i > 0) {
-              refs.current[i - 1]?.focus();
-            }
-          }}
-          onFocus={() => setFocusedIndex(i)}
-          onBlur={() => setFocusedIndex((f) => (f === i ? null : f))}
-          style={[
-            type.bodyStrong,
-            {
-              flex: 1,
-              minHeight: 52,
-              textAlign: 'center',
-              backgroundColor: auth ? colors.authField : colors.surface,
-              borderWidth: 1,
-              borderColor: auth
-                ? focusedIndex === i
-                  ? colors.authAccent
+        <Pop key={i} trigger={v} style={{ flex: 1 }}>
+          <TextInput
+            ref={(r) => {
+              refs.current[i] = r;
+            }}
+            accessibilityLabel={`Digit ${i + 1}`}
+            value={v}
+            keyboardType="number-pad"
+            textContentType="oneTimeCode"
+            inputMode="numeric"
+            maxLength={length}
+            onChangeText={(t) => setDigit(i, t)}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === 'Backspace' && !values[i] && i > 0) {
+                refs.current[i - 1]?.focus();
+              }
+            }}
+            onFocus={() => setFocusedIndex(i)}
+            onBlur={() => setFocusedIndex((f) => (f === i ? null : f))}
+            style={[
+              type.bodyStrong,
+              {
+                flex: 1,
+                minWidth: 0,
+                minHeight: 52,
+                textAlign: 'center',
+                backgroundColor: auth ? colors.authField : colors.surface,
+                borderWidth: 1,
+                borderColor: auth
+                  ? focusedIndex === i
+                    ? colors.authAccent
+                    : v
+                      ? colors.authRuleStrong
+                      : colors.authRule
                   : v
-                    ? colors.authRuleStrong
-                    : colors.authRule
-                : v
-                  ? colors.accent
-                  : colors.ruleStrong,
-              borderRadius: auth ? radius.md : radius.sm,
-              color: auth ? colors.authInk : colors.ink,
-            },
-          ]}
-        />
+                    ? colors.accent
+                    : colors.ruleStrong,
+                borderRadius: auth ? radius.md : radius.sm,
+                color: auth ? colors.authInk : colors.ink,
+              },
+            ]}
+          />
+        </Pop>
       ))}
     </View>
   );

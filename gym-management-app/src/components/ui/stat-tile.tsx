@@ -1,9 +1,10 @@
 /**
- * Stat tile: a figure and its label, in tabular-style condensed numerals.
- * No icon coins, no gradient. An optional delta chip renders only when the
- * caller computed a real comparison — never a decorative trend arrow.
+ * Stat primitives: the row wrapper used across the Receptionist screens and
+ * the tinted delta pill shared with the chart cards. (The old unused
+ * `StatTile` was removed in Phase 6 — every screen renders tiles via the
+ * role-specific `OwnerStatTile`.)
  */
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Children } from 'react';
 
 import { AppText } from '@/components/ui/text';
@@ -41,88 +42,19 @@ export function DeltaPill({ delta }: { delta: StatDelta }) {
   );
 }
 
-export function StatTile(props: {
-  label: string;
-  value: string;
-  hint?: string;
-  tone?: 'ink' | 'accent' | 'success' | 'danger' | 'info' | 'muted';
-  delta?: StatDelta;
-}) {
-  const tokens = useTokens();
-  const { colors, spacing, radius } = tokens;
-  const toneColor = {
-    ink: colors.ink,
-    // Coach Board: amber figures for emphasised data; semantic tones keep their hues.
-    accent: colors.accent,
-    success: colors.success,
-    danger: colors.danger,
-    info: colors.info,
-    muted: colors.inkMuted,
-  }[props.tone ?? 'ink'];
-
-  return (
-    <View
-      accessibilityLabel={`${props.label}: ${props.value}${props.delta ? `, ${props.delta.direction === 'up' ? 'up' : 'down'} ${props.delta.label}` : ''}${props.hint ? `, ${props.hint}` : ''}`}
-      accessible
-      style={{
-        flexBasis: 'auto',
-        backgroundColor: colors.surface,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: colors.rule,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-        gap: spacing['3xs'],
-      }}>
-      <AppText variant="figure" style={{ color: toneColor }}>
-        {props.value}
-      </AppText>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-        <AppText variant="caption" tone="muted" style={styles.metaLabel}>
-          {props.label}
-        </AppText>
-        {props.delta && <DeltaPill delta={props.delta} />}
-      </View>
-      {props.hint && (
-        <AppText variant="caption" tone="subtle">
-          {props.hint}
-        </AppText>
-      )}
-    </View>
-  );
-}
-
-/** Sibling tiles share one bordered card and part with hairlines. */
+/**
+ * Stat row: a TRANSPARENT layout row for stat tiles — no surface, border
+ * or shadow of its own. The tiles placed inside it are complete cards;
+ * giving the row its own card surface produced a card-upon-card (doubled)
+ * look, so the row now behaves exactly like the owner dashboard's
+ * `OwnerStatRow`: tiles sit directly on the panel with a small gap.
+ */
 export function StatRow({ children }: { children: React.ReactNode[] }) {
   const tokens = useTokens();
-  const { colors, spacing } = tokens;
+  const { spacing } = tokens;
   return (
-    <View
-      style={[
-        styles.statRow,
-        {
-          backgroundColor: colors.surface,
-          borderWidth: 1,
-          borderColor: colors.rule,
-          borderRadius: tokens.radius.md,
-          paddingVertical: spacing.sm,
-        },
-      ]}>
-      {Children.map(children, (child, i) => (
-        <>
-          {i > 0 && <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: colors.rule }} />}
-          <View style={{ flex: 1, paddingHorizontal: spacing.sm }}>{child}</View>
-        </>
-      ))}
+    <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+      {Children.map(children, (child) => child)}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  statRow: {
-    flexDirection: 'row',
-  },
-  metaLabel: {
-    flexShrink: 1,
-  },
-});

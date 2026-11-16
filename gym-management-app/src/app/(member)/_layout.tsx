@@ -1,25 +1,22 @@
 /**
- * Member workspace tabs. One place for the member in Part 1: QR attendance.
- * (Payments and profile arrive in later parts.)
+ * Member workspace: the member's fitness home (QR attendance, plan,
+ * progress). A single screen in Part 1, so there is no tab bar to show —
+ * the screen opens directly in the shared Fino workspace chrome (dark
+ * ground, white greeting, light dot-pattern panel), matching the Owner and
+ * Receptionist workspaces. Member routes stay exactly as they were.
  */
-import { NativeTabs } from 'expo-router/native-tabs';
-import { useTokens } from '@/hooks/use-tokens';
+import { Stack } from 'expo-router';
+
+import { Colors } from '@/constants/theme';
 
 export default function MemberLayout() {
-  const tokens = useTokens();
-  const { colors } = tokens;
   return (
-    <NativeTabs
-      backgroundColor={colors.paper}
-      tintColor={colors.accent}
-      labelStyle={{ selected: { color: colors.accent, fontWeight: '600' }, default: { color: colors.inkMuted } }}>
-      <NativeTabs.Trigger name="attendance">
-        <NativeTabs.Trigger.Label>Attendance</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          sf="qrcode.viewfinder"
-          md="qr_code_scanner"
-        />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: Colors.ownerBg },
+      }}>
+      <Stack.Screen name="attendance" />
+    </Stack>
   );
 }

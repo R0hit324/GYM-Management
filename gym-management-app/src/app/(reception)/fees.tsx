@@ -1,332 +1,732 @@
 /**
- * Screen 5 — Fees entry (receptionist).
+ * Collect Payment — the desk's six-step payment workflow (Stage 6).
  *
- * Full payment only: no partial amounts are representable. Verification of
- * money happens at the UPI statement / server in Part 4 — a submitted UTR or
- * screenshot never marks a payment as verified from this screen, and the
- * demo makes that stance explicit.
+ * One guided flow: 1 select member → 2 select plan → 3 apply discount →
+ * 4 choose UPI or cash → 5 review → 6 record, with a step progress bar,
+ * per-step validation gates and an in-flow Back that keeps every entered
+ * value (all state lives in this one component, so stepping back or forth
+ * never erases the form).
+ *
+ * Pricing rules (unchanged from the approved model): a renewal — the
+ * member's own plan — uses the member's locked subscription price and is
+ * never silently replaced by the current plan price; a new membership (a
+ * different plan) uses the currently configured plan price. The discount
+ * is the authorised desk discount (0–50%, clamped and validated exactly as
+ * Fees always validated it); the final amount updates immediately and can
+ * never go negative because the percentage is capped below 100.
+ *
+ * UPI shows the gym's session-configured payment QR (Stage 4 store) — the
+ * generated code carries the member's payable amount; a configured image
+ * is shown as-is with its no-decoding disclosure. Entering a UTR is only
+ * recording a reference: every recorded entry (UPI and cash alike) is
+ * written as `awaitingVerification` — nothing in this demo verifies a
+ * payment, and there is no fake gateway or fake success.
+ *
+ * Recording writes exactly one record into the shared session store (the
+ * same source Transaction History, Home and Payment QR read), guarded
+ * against double taps and duplicate UTRs. Every record is labelled
+ * session-only: it resets on restart and is never presented as a database
+ * save. Historical records are never modified.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { Screen } from '@/components/scaffold';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Image } from 'expo-image';
+
 import { AppText } from '@/components/ui/text';
 import { Button, IconButton } from '@/components/ui/button';
-import { Card, Section, Divider, Well } from '@/components/ui/card';
-import { StatTile, StatRow } from '@/components/ui/stat-tile';
-import { StatusBadge } from '@/components/ui/status-badge';
 import { TextField } from '@/components/ui/text-field';
 import { SearchBar } from '@/components/ui/search-bar';
-import { ListGroup, ListRow, RowDivider, MemberAvatar } from '@/components/ui/list-row';
-import { EmptyState } from '@/components/ui/feedback';
-import { ModalSheet } from '@/components/ui/modal-sheet';
-import { QrDisplay } from '@/components/ui/qr-display';
 import { PressSurface } from '@/components/ui/press-surface';
 import { RiseIn } from '@/components/ui/rise-in';
-import { WorkspaceMeta, SignOut } from '@/components/workspace-meta';
+import { CountUp, SuccessPop } from '@/components/ui/motion';
+import { QrDisplay } from '@/components/ui/qr-display';
+import { SignOut } from '@/components/workspace-meta';
+import {
+  WorkspaceScreen,
+  WorkspaceBottomNavigation,
+  WorkspaceSection,
+  WorkspaceCard,
+  WorkspaceRowDivider,
+  WorkspaceWell,
+} from '@/components/workspace/workspace-ui';
+import {
+  OwnerListGroup,
+  OwnerListRow,
+  OwnerMemberAvatar,
+  OwnerStatusText,
+  OwnerEmptyState,
+} from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoPlans, demoMembers, demoPayments, demoGymUpiId, demoGymName } from '@/data/demo';
-import { formatCurrency, formatDate } from '@/utils/format';
-import type { Member } from '@/types/domain';
+import { demoPlans, demoGymName } from '@/data/demo';
+import { useSessionMembers, useSessionPayments, addSessionPayment, useSessionQrConfig, useSessionPlanPrices, effectivePlanPrice } from '@/data/session';
+import { computePayable, paymentStatusInfo } from '@/utils/payment';
+import { buildUpiPayload } from '@/utils/upi';
+import { displayMembershipStatus } from '@/utils/membership';
+import { formatCurrency, formatDate, pluralise } from '@/utils/format';
+import type { Member, MembershipPlan, MembershipStatus, PaymentMethod, PaymentRecord, PlanDuration } from '@/types/domain';
 
-export default function FeesEntryScreen() {
+const navItems = [
+  { key: 'home', label: 'Home', icon: 'home-outline', href: '/(reception)/home' },
+  { key: 'members', label: 'Members', icon: 'people-outline', href: '/(reception)/members' },
+  { key: 'more', label: 'More', icon: 'apps-outline', href: '/(reception)/more' },
+] as const;
+
+const STEP_LABELS = ['Member', 'Plan', 'Discount', 'Method', 'Review', 'Done'] as const;
+
+const durationLabel: Record<PlanDuration, string> = {
+  monthly: '1 month',
+  quarterly: '3 months',
+  halfYearly: '6 months',
+  yearly: '12 months',
+};
+
+const statusTone: Record<MembershipStatus, 'up' | 'down' | 'neutral' | 'warning' | 'action'> = {
+  active: 'up',
+  expiring: 'warning',
+  expired: 'down',
+  frozen: 'neutral',
+  pendingPayment: 'action',
+};
+
+const statusLabel: Record<MembershipStatus, string> = {
+  active: 'Active',
+  expiring: 'Expiring',
+  expired: 'Expired',
+  frozen: 'Frozen',
+  pendingPayment: 'Payment pending',
+};
+
+/** The member's business display number (GB-XXXX), the app-wide convention. */
+const memberDisplayId = (memberId: string) => memberId.replace('m-', 'GB-').toUpperCase();
+
+export default function CollectPaymentScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
+  // The gym's session-configured UPI QR — the same Stage 4 store the
+  // Payment QR screen edits, so a configuration change shows here.
+  const qrConfig = useSessionQrConfig();
+  const members = useSessionMembers();
+  const records = useSessionPayments();
+  // Session plan price overrides (Membership Plans edits) — new
+  // memberships price from the effective plan price; locked renewals never
+  // read this store.
+  const planPrices = useSessionPlanPrices();
 
+  // Member Profile hands over ?member=<id> — preselected when it resolves
+  // to a real member; an invalid id falls back to step 1 with a note.
+  const params = useLocalSearchParams<{ member?: string }>();
+
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [memberId, setMemberId] = useState<string | null>(() => {
+    const id = typeof params.member === 'string' ? params.member : null;
+    return id !== null && members.some((m) => m.id === id) ? id : null;
+  });
   const [query, setQuery] = useState('');
-  const [memberId, setMemberId] = useState<string | null>(null);
+  // A valid ?member= handoff preselects that member's own plan (renewal).
+  const [planId, setPlanId] = useState<string | null>(() => {
+    const id = typeof params.member === 'string' ? params.member : null;
+    const m = id !== null ? (members.find((x) => x.id === id) ?? null) : null;
+    return m ? m.planId : null;
+  });
   const [discountPct, setDiscountPct] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('upi');
   const [utr, setUtr] = useState('');
-  const [method, setMethod] = useState<'upi' | 'cash'>('upi');
-  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
-  const [upiOpen, setUpiOpen] = useState(false);
-  const [recordedOpen, setRecordedOpen] = useState(false);
+  const [utrError, setUtrError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Double-submission guard: stays latched after a successful record and is
+  // only released by "Collect another payment", so a queued second tap can
+  // never create a second record.
+  const savingRef = useRef(false);
+  const [recorded, setRecorded] = useState<PaymentRecord | null>(null);
 
+  const member: Member | null = memberId ? (members.find((m) => m.id === memberId) ?? null) : null;
+  const paramInvalid = typeof params.member === 'string' && member === null;
+
+  // Step 1 search: name, phone and member ID (mirrors the register/search
+  // conventions; digits match the masked demo phone numbers honestly).
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const digits = q.replace(/\D/g, '');
     if (!q) return [];
-    return demoMembers.filter((m) => m.name.toLowerCase().includes(q) || m.id.replace('m-', '').includes(q));
-  }, [query]);
+    return members.filter((m) => {
+      const phone = m.phone.replace(/\s/g, '').toLowerCase();
+      return (
+        m.name.toLowerCase().includes(q) ||
+        phone.includes(q.replace(/\s/g, '')) ||
+        (digits.length > 0 && (m.id.includes(digits) || m.phone.replace(/\D/g, '').includes(digits)))
+      );
+    });
+  }, [members, query]);
 
-  const member: Member | null = demoMembers.find((m) => m.id === memberId) ?? null;
-  const plan = member ? demoPlans.find((p) => p.id === member.planId) ?? null : null;
-  const original = member ? member.priceLocked : 0; // existing subscriptions keep their agreed price
+  const plan: MembershipPlan | null = planId ? (demoPlans.find((p) => p.id === planId) ?? null) : null;
+
+  // Pricing: the member's own plan is a RENEWAL at their locked price —
+  // never silently replaced by the current plan price. Any other plan is a
+  // NEW membership at the currently configured (session-effective) price.
+  const isRenewal = member !== null && plan !== null && plan.id === member.planId && member.priceLocked > 0;
+  const basePrice = plan
+    ? isRenewal && member
+      ? member.priceLocked
+      : effectivePlanPrice(plan.id, plan.price, planPrices)
+    : 0;
+
+  // Authorised desk discount: 0–50, clamped; an entry that is not exactly
+  // representable (negative, >50 or non-numeric) is invalid and blocks the
+  // flow — the same validation Fees has always applied.
   const discount = Math.max(0, Math.min(50, Number(discountPct) || 0));
-  const payable = Math.round(original * (1 - discount / 100));
   const invalidDiscount = discountPct !== '' && (Number.isNaN(Number(discountPct)) || discount !== Number(discountPct));
+  const payable = computePayable(basePrice, discount);
+  const discountAmount = basePrice - payable;
 
-  const pending = demoPayments.filter((p) => p.state === 'awaitingVerification');
+  const utrValue = utr.trim();
+  const utrValid = utrValue.length >= 6;
+  const utrDuplicate = records.some((p) => (p.utr ?? '').toLowerCase() === utrValue.toLowerCase());
 
-  const submit = () => {
-    const next: Record<string, string | undefined> = {};
-    if (!member) next.member = 'Select a member.';
-    if (invalidDiscount) next.discount = 'Discount is a percentage, for example 10.';
-    if (method === 'upi' && utr.trim().length < 6) next.utr = 'Enter the UTR or transaction reference from your UPI app.';
-    setErrors(next);
-    if (Object.keys(next).length === 0) {
-      setRecordedOpen(true);
-    }
+  // Per-step gates: Continue is disabled until the step's inputs validate.
+  const stepReady: Record<number, boolean> = {
+    1: member !== null,
+    2: plan !== null,
+    3: !invalidDiscount,
+    4: method === 'cash' || (utrValid && !utrDuplicate),
+    5: true,
   };
 
+  const selectMember = (id: string) => {
+    setMemberId(id);
+    setQuery('');
+    // A new member resets the plan choice to their own plan (renewal) and
+    // clears everything downstream — no stale amounts can survive.
+    const m = members.find((x) => x.id === id);
+    setPlanId(m ? m.planId : null);
+    setDiscountPct('');
+    setMethod('upi');
+    setUtr('');
+    setUtrError(null);
+  };
+
+  const clearMember = () => {
+    setMemberId(null);
+    setPlanId(null);
+    setDiscountPct('');
+    setMethod('upi');
+    setUtr('');
+    setUtrError(null);
+  };
+
+  const goBack = () => {
+    if (step > 1 && step < 6) setStep((step - 1) as 1 | 2 | 3 | 4 | 5);
+  };
+
+  const goNext = () => {
+    if (!stepReady[step]) return;
+    setUtrError(null);
+    setStep((step + 1) as 2 | 3 | 4 | 5 | 6);
+  };
+
+  // Step 6 — validate the whole transaction again, then write exactly one
+  // record. The latched ref makes repeated taps impossible to double-book.
+  const confirmRecord = () => {
+    if (savingRef.current) return;
+    if (member === null || plan === null || invalidDiscount || payable <= 0) return;
+    if (method === 'upi' && (!utrValid || utrDuplicate)) {
+      setUtrError(
+        utrDuplicate
+          ? 'This reference is already on record. Check the Transaction History screen.'
+          : 'Enter the UTR or transaction reference from the UPI app (6+ characters).',
+      );
+      setStep(4);
+      return;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    // Real recorded time; the id derives from the member and the reference
+    // (UPI) or the recorded time (cash) — no invented identifiers.
+    const createdAt = new Date().toISOString();
+    const entry: PaymentRecord = {
+      id: method === 'upi' ? `pay-local-${member.id}-${utrValue}` : `pay-local-${member.id}-cash-${createdAt}`,
+      memberId: member.id,
+      memberName: member.name,
+      planId: plan.id,
+      originalPrice: basePrice,
+      discountPct: discount,
+      payable,
+      method,
+      utr: method === 'upi' ? utrValue : undefined,
+      state: 'awaitingVerification',
+      receiptIssued: false,
+      createdAt,
+      note: 'Recorded from Collect Payment (desk)',
+    };
+    addSessionPayment(entry);
+    setRecorded(entry);
+    setSaving(false);
+    setStep(6);
+    // savingRef stays latched: only "Collect another payment" releases it.
+  };
+
+  const resetForNewPayment = () => {
+    savingRef.current = false;
+    setRecorded(null);
+    setStep(1);
+    setPlanId(member ? member.planId : null);
+    setDiscountPct('');
+    setMethod('upi');
+    setUtr('');
+    setUtrError(null);
+  };
+
+  const pending = records.filter((p) => p.state === 'awaitingVerification');
+  const upiPayload = method === 'upi' ? buildUpiPayload(qrConfig.upiId, payable) : null;
+
+  const detailRow = (label: string, value: string, strong = false) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 32, alignItems: 'center' }}>
+      <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
+        {label}
+      </AppText>
+      <AppText
+        variant={strong ? 'bodyStrong' : 'label'}
+        numberOfLines={1}
+        style={{ color: strong ? colors.ownerAccentDeep : colors.ownerInk, fontWeight: strong ? '700' : '500' }}>
+        {value}
+      </AppText>
+    </View>
+  );
+
   return (
-    <Screen
-      title="Fees entry"
-      subtitle="Full payment only, verified before membership activates"
-      demo
-      roleTag="reception"
-      actions={<SignOut />}>
-      <WorkspaceMeta role="reception" demo />
+    <View style={{ flex: 1 }}>
+      <WorkspaceScreen
+        title="Collect Payment"
+        eyebrow="Payments"
+        subtitle="Member, plan, discount, method, review, record"
+        demo
+        actions={<SignOut />}>
+        {/* Progress indicator — always visible, never animated mid-step */}
+        <StepProgress current={recorded ? 6 : step} />
 
-      {/* Member search */}
-      <RiseIn style={{ marginTop: spacing.md }}>
-        <Section title="Find the member" style={{ marginTop: 0 }}>
-          <SearchBar label="Search member for payment" value={query} onChange={setQuery} placeholder="Name or member number" />
-          {member && (
-            <Card style={{ marginTop: spacing.sm }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                <MemberAvatar name={member.name} />
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
-                    <AppText variant="bodyStrong">{member.name}</AppText>
-                    <StatusBadge
-                      label={member.status === 'active' ? 'Active' : member.status === 'expiring' ? 'Expiring' : member.status === 'expired' ? 'Expired' : member.status}
-                      tone={member.status === 'active' ? 'success' : member.status === 'expiring' ? 'warning' : 'danger'}
-                      small
-                    />
-                  </View>
-                  <AppText variant="caption" tone="muted">
-                    {member.id.replace('m-', 'GB-').toUpperCase()}
-                    {member.membershipEnd ? ` · ends ${formatDate(member.membershipEnd)}` : ' · not active yet'}
+        {recorded ? (
+          /* Step 6 — confirmation. Session-only, never a "saved" claim. */
+          <RiseIn>
+            <WorkspaceSection title="Payment recorded">
+              <WorkspaceCard>
+                <View style={{ alignItems: 'center', gap: spacing.xs }}>
+                  <SuccessPop size={54} color={colors.ownerSuccessDeep} />
+                  <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
+                    {recorded.memberName} · {formatCurrency(recorded.payable)}
                   </AppText>
+                  <OwnerStatusText label="Awaiting verification" tone="warning" />
                 </View>
-                <IconButton name="close-circle" label="Clear selected member" onPress={() => setMemberId(null)} />
-              </View>
-            </Card>
-          )}
-          {results.length > 0 && !member && (
-            <View style={{ marginTop: spacing.sm }}>
-              <ListGroup label="Search results">
-                {results.slice(0, 4).map((m, i) => (
-                  <View key={m.id}>
-                    {i > 0 && <RowDivider />}
-                    <ListRow
-                      leading={<MemberAvatar name={m.name} />}
-                      title={m.name}
-                      detail={`${m.id.replace('m-', 'GB-')}`}
-                      onPress={() => {
-                        setMemberId(m.id);
-                        setQuery('');
-                      }}
-                    />
-                  </View>
-                ))}
-              </ListGroup>
-            </View>
-          )}
-          {!member && query.length > 0 && results.length === 0 && (
-            <EmptyState
-              icon="search-outline"
-              title="No member matches"
-              hint="Members join through the online application. New applicants appear here after the owner approves them."
-            />
-          )}
-          {errors.member && (
-            <AppText variant="caption" style={{ color: colors.danger }}>
-              {errors.member}
-            </AppText>
-          )}
-        </Section>
-      </RiseIn>
-
-      {/* Amount section */}
-      {member && plan && (
-        <RiseIn index={1}>
-          <Section title="Amount">
-            <Card padded={false} style={{ overflow: 'hidden' }}>
-              <View style={{ padding: spacing.md }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 34, alignItems: 'center' }}>
-                  <AppText variant="label" tone="muted">
-                    Plan
-                  </AppText>
-                  <AppText variant="bodyStrong">
-                    {plan.name} · joined {formatDate(member.joinedOn)}
-                  </AppText>
+                <WorkspaceRowDivider />
+                <View style={{ marginTop: spacing.xs, gap: spacing['3xs'] }}>
+                  {detailRow('Member', `${recorded.memberName} · ${memberDisplayId(recorded.memberId)}`)}
+                  {detailRow('Plan', demoPlans.find((p) => p.id === recorded.planId)?.name ?? recorded.planId)}
+                  {detailRow('Original price', formatCurrency(recorded.originalPrice))}
+                  {detailRow('Discount', recorded.discountPct > 0 ? `${recorded.discountPct}% off` : 'None')}
+                  {detailRow('Final amount', formatCurrency(recorded.payable), true)}
+                  {detailRow('Method', recorded.method === 'upi' ? 'UPI' : 'Cash')}
+                  {detailRow('Reference', recorded.utr ?? 'Not applicable — cash')}
+                  {detailRow('Recorded at', formatDate(recorded.createdAt))}
                 </View>
-                <Divider />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 34, alignItems: 'center' }}>
-                  <AppText variant="label" tone="muted">
-                    Agreed price (locked)
-                  </AppText>
-                  <AppText variant="bodyStrong">{formatCurrency(original)}</AppText>
-                </View>
-                <Divider />
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 58 }}>
-                  <AppText variant="label" tone="muted">
-                    Discount % (authorised)
-                  </AppText>
-                  <View style={{ width: 128 }}>
-                    <TextField
-                      label=""
-                      placeholder="0"
-                      keyboardType="number-pad"
-                      inputMode="numeric"
-                      value={discountPct}
-                      onChangeText={setDiscountPct}
-                      error={errors.discount ?? (invalidDiscount ? 'Discount is a percentage, for example 10.' : null)}
-                    />
-                  </View>
-                </View>
-                <Divider />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 34, alignItems: 'center' }}>
-                  <AppText variant="label" tone="muted">
-                    Final payable
-                  </AppText>
-                  <AppText variant="figure" tone="accent">
-                    {formatCurrency(payable)}
-                  </AppText>
-                </View>
-              </View>
-            </Card>
-            <Well style={{ marginTop: spacing.xs }}>
-              <AppText variant="caption" tone="muted">
-                Discounts need the owner or receptionist authorisation and are audited. Corrections later go through reversal records, never silent edits.
+              </WorkspaceCard>
+              <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.sm }}>
+                Demo record for this session only — it resets when the app restarts and nothing was saved to a server or database. The entry is awaiting verification: the owner checks it against the UPI statement or the cash count before membership extends and a receipt issues. A recorded reference is not proof of payment.
               </AppText>
-            </Well>
-          </Section>
-
-          {/* Payment method + proof */}
-          <RiseIn index={2}>
-            <Section title="Pay using">
-              <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-                <MethodOption
-                  label="UPI"
-                  selected={method === 'upi'}
-                  icon="phone-portrait-outline"
-                  onPress={() => setMethod('upi')}
+              <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
+                <Button
+                  label="Open Transaction History"
+                  icon="time-outline"
+                  fullWidth
+                  onPress={() => router.push('/(reception)/transaction-history' as never)}
                 />
-                <MethodOption
-                  label="Cash"
-                  selected={method === 'cash'}
-                  icon="cash-outline"
-                  onPress={() => setMethod('cash')}
-                />
-              </View>
-              {method === 'upi' ? (
-                <Card style={{ marginTop: spacing.sm }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <AppText variant="bodyStrong">Gym UPI QR</AppText>
-                    <Button label="Show QR" size="small" variant="secondary" icon="qr-code-outline" onPress={() => setUpiOpen(true)} />
-                  </View>
-                  <AppText variant="caption" tone="muted" style={{ marginTop: spacing['3xs'] }}>
-                    Member pays {formatCurrency(payable)} into {demoGymName}&apos;s {demoGymUpiId}.
-                  </AppText>
-                  <View style={{ marginTop: spacing.sm }}>
-                    <TextField
-                      label="UTR or transaction reference"
-                      placeholder="12-digit UTR from the payment app"
-                      value={utr}
-                      onChangeText={setUtr}
-                      error={errors.utr}
-                      autoCapitalize="characters"
-                    />
-                  </View>
-                  <AppText variant="caption" tone="warning" style={{ color: colors.warning, marginTop: spacing.xs }}>
-                    A submitted UTR or screenshot marks this entry from the desk for verification. It does not verify the payment. Money checks out in Part 4.
-                  </AppText>
-                  {/* Optional evidence upload */}
+                {member && (
                   <Button
-                    label="Attach payment evidence (optional)"
-                    size="small"
+                    label="Open Member Profile"
                     variant="secondary"
-                    icon="document-attach-outline"
-                    onPress={noop}
-                    style={{ marginTop: spacing.xs, alignSelf: 'flex-start' }}
+                    icon="person-outline"
+                    fullWidth
+                    onPress={() => router.push(`/(reception)/member-profile?member=${member.id}` as never)}
                   />
-                  <AppText variant="caption" tone="subtle" style={{ marginTop: spacing.xxs }}>
-                    Evidence is stored privately; replacing or deleting it is restricted once submitted.
-                  </AppText>
-                </Card>
-              ) : (
-                <Well style={{ marginTop: spacing.sm }}>
-                  <AppText variant="label" tone="muted">
-                    Cash is counted at the desk and recorded against {formatCurrency(payable)}. The owner verifies physical collections daily in the report.
-                  </AppText>
-                </Well>
-              )}
-
-              <View style={{ marginTop: spacing.md, flexDirection: 'column', gap: spacing.xs }}>
-                <Button label="Record payment for verification" icon="checkmark-outline" fullWidth onPress={submit} />
-                <AppText variant="caption" tone="subtle" align="center">
-                  Nothing is sent in this preview. Receipt is issued after verification only.
-                </AppText>
+                )}
+                <Button label="Collect another payment" variant="secondary" fullWidth onPress={resetForNewPayment} />
               </View>
-            </Section>
+            </WorkspaceSection>
           </RiseIn>
-        </RiseIn>
-      )}
-
-      {/* Pending verification queue */}
-      <RiseIn index={5}>
-        <Section title={`Awaiting verification (${pending.length})`}>
-          {pending.length === 0 ? (
-            <EmptyState icon="time-outline" title="Queue is clear" hint="Verified and waiting entries appear here." />
-          ) : (
-            <ListGroup label="Payments awaiting verification">
-              {pending.map((p, i) => (
-                <View key={p.id}>
-                  {i > 0 && <RowDivider />}
-                  <ListRow
-                    leading={<MemberAvatar name={p.memberName} />}
-                    title={p.memberName}
-                    detail={`${p.utr ?? 'Reference pending'} · ${formatCurrency(p.payable)}`}
-                    status={<StatusBadge label="Awaiting check" tone="warning" small />}
+        ) : (
+          <View key={step}>
+            {/* Step 1 — Select member */}
+            <RiseIn>
+              <WorkspaceSection title="1 · Select member">
+                <SearchBar
+                  label="Search by member name, phone or member ID"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Name, phone or member number"
+                />
+                {paramInvalid && (
+                  <AppText variant="caption" style={{ color: colors.ownerWarningDeep, marginTop: spacing.xs }}>
+                    The linked member could not be found — search below to select one.
+                  </AppText>
+                )}
+                {member && (
+                  <WorkspaceCard style={{ marginTop: spacing.sm }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                      <OwnerMemberAvatar name={member.name} />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
+                          <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
+                            {member.name}
+                          </AppText>
+                          <OwnerStatusText label={statusLabel[displayMembershipStatus(member)]} tone={statusTone[displayMembershipStatus(member)]} />
+                        </View>
+                        <AppText variant="caption" numberOfLines={1} style={{ color: colors.ownerInkMuted }}>
+                          {memberDisplayId(member.id)} · {member.phone}
+                        </AppText>
+                        <AppText variant="caption" numberOfLines={1} style={{ color: colors.ownerInkMuted }}>
+                          {demoPlans.find((p) => p.id === member.planId)?.name ?? member.planId}
+                          {member.membershipEnd ? ` · ends ${formatDate(member.membershipEnd)}` : ' · not active yet'}
+                        </AppText>
+                      </View>
+                      <IconButton name="close-circle" label="Clear selected member" onPress={clearMember} />
+                    </View>
+                  </WorkspaceCard>
+                )}
+                {results.length > 0 && !member && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <OwnerListGroup label="Search results">
+                      {results.slice(0, 5).map((m, i) => (
+                        <View key={m.id}>
+                          {i > 0 && <WorkspaceRowDivider />}
+                          <OwnerListRow
+                            leading={<OwnerMemberAvatar name={m.name} />}
+                            title={m.name}
+                            detail={`${memberDisplayId(m.id)} · ${m.phone}`}
+                            status={<OwnerStatusText label={statusLabel[displayMembershipStatus(m)]} tone={statusTone[displayMembershipStatus(m)]} />}
+                            chevron
+                            onPress={() => selectMember(m.id)}
+                          />
+                        </View>
+                      ))}
+                    </OwnerListGroup>
+                  </View>
+                )}
+                {!member && query.trim().length > 0 && results.length === 0 && (
+                  <OwnerEmptyState
+                    icon="search-outline"
+                    title="No member matches"
+                    hint="Try a shorter name, the phone digits or the member number."
+                    actionLabel="Clear search"
+                    onAction={() => setQuery('')}
                   />
-                </View>
-              ))}
-            </ListGroup>
-          )}
-          <AppText variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
-            Awaiting-check entries never activate membership and never read as verified.
-          </AppText>
-        </Section>
-      </RiseIn>
+                )}
+              </WorkspaceSection>
+            </RiseIn>
 
-      <RiseIn index={6}>
-        <Section title="Receipt status">
-          <StatRow>
-            <StatTile label="Receipts issued after check" value={String(demoPayments.filter((p) => p.receiptIssued).length)} tone="success" />
-            <StatTile label="Recorded for verification" value={String(demoPayments.filter((p) => !p.receiptIssued).length)} tone="muted" hint="Not yet receipts" />
-          </StatRow>
-        </Section>
-      </RiseIn>
+            {/* Step 2 — Select plan */}
+            {member && (
+              <RiseIn index={1} style={{ marginTop: spacing.sm }}>
+                <WorkspaceSection title="2 · Select plan">
+                  {demoPlans.map((p) => {
+                    const renewal = p.id === member.planId && member.priceLocked > 0;
+                    const effectivePrice = effectivePlanPrice(p.id, p.price, planPrices);
+                    const price = renewal ? member.priceLocked : effectivePrice;
+                    const selected = planId === p.id;
+                    return (
+                      <PressSurface
+                        key={p.id}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: selected ? selected : undefined }}
+                        accessibilityLabel={`${p.name}, ${durationLabel[p.duration]}, ${renewal ? `renewal at the locked price ${formatCurrency(price)}` : `new membership at ${formatCurrency(price)}`}`}
+                        onPress={() => setPlanId(p.id)}
+                        scaleOnPress={false}
+                        style={{
+                          marginTop: selected ? 0 : spacing.xs,
+                          minHeight: 68,
+                          borderRadius: tokens.radius.md,
+                          borderWidth: selected ? 2 : 1,
+                          borderColor: selected ? colors.ownerAccentDeep : colors.ownerRule,
+                          backgroundColor: selected ? colors.ownerAccentTint : colors.ownerPanel,
+                          padding: spacing.sm,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                            <AppText variant="bodyStrong" numberOfLines={1} style={{ color: colors.ownerInk }}>
+                              {p.name}
+                            </AppText>
+                            <OwnerStatusText
+                              label={renewal ? 'Renewal · locked price' : 'New membership'}
+                              tone={renewal ? 'up' : 'neutral'}
+                            />
+                          </View>
+                          <AppText variant="caption" numberOfLines={1} style={{ color: colors.ownerInkMuted }}>
+                            Valid for {durationLabel[p.duration]}
+                            {renewal && member.priceLocked !== effectivePrice
+                              ? ` · current price ${formatCurrency(effectivePrice)} — the member's locked ${formatCurrency(member.priceLocked)} applies`
+                              : renewal
+                                ? ' · the member\'s locked price applies'
+                                : ` · current plan price ${formatCurrency(effectivePrice)}`}
+                          </AppText>
+                        </View>
+                        <AppText variant="bodyStrong" style={{ color: selected ? colors.ownerAccentDeep : colors.ownerInk }}>
+                          {formatCurrency(price)}
+                        </AppText>
+                        {selected && <Ionicons name="checkmark-circle" size={18} color={colors.ownerAccentDeep} />}
+                      </PressSurface>
+                    );
+                  })}
+                  <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
+                    {isRenewal
+                      ? `Renewal of ${member.name}'s own plan — their locked ${formatCurrency(member.priceLocked)} is used, never the current ${formatCurrency(effectivePlanPrice(member.planId, demoPlans.find((p) => p.id === member.planId)?.price ?? 0, planPrices))}.`
+                      : 'A plan different from the member\'s current one is a new membership at the currently configured price for this session.'}
+                  </AppText>
+                </WorkspaceSection>
+              </RiseIn>
+            )}
 
-      {/* UPI QR sheet */}
-      <ModalSheet visible={upiOpen} onClose={() => setUpiOpen(false)} title="Gym UPI QR" subtitle="One code, only at the counter" toneBadge={<StatusBadge label="Demo display" tone="warning" small />}>
-        <QrDisplay
-          payload={`upi://pay?pa=${demoGymUpiId}&am=${payable || 1200}&cu=INR`}
-          caption={`Pays ${demoGymName}. The real gym QR comes at go-live; Amount inclusion means the desk receipt and UPI statement agree for reconciliation.`}
-        />
-      </ModalSheet>
+            {/* Step 3 — Apply discount */}
+            {member && plan && (
+              <RiseIn index={2} style={{ marginTop: spacing.sm }}>
+                <WorkspaceSection title="3 · Apply discount">
+                  <WorkspaceCard>
+                    {detailRow(isRenewal ? 'Agreed price (locked)' : 'Current plan price', formatCurrency(basePrice))}
+                    <WorkspaceRowDivider />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 58 }}>
+                      <AppText variant="label" style={{ color: colors.ownerInkMuted, flex: 1, paddingRight: spacing.sm }}>
+                        Discount % (authorised)
+                      </AppText>
+                      <View style={{ width: 128 }}>
+                        <TextField
+                          label=""
+                          placeholder="0"
+                          keyboardType="number-pad"
+                          inputMode="numeric"
+                          value={discountPct}
+                          onChangeText={setDiscountPct}
+                          error={invalidDiscount ? 'Discount is a percentage between 0 and 50, for example 10.' : null}
+                        />
+                      </View>
+                    </View>
+                    <WorkspaceRowDivider />
+                    {detailRow('Discount amount', discountAmount > 0 ? `− ${formatCurrency(discountAmount)}` : formatCurrency(0))}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 40, alignItems: 'center' }}>
+                      <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
+                        Final payable
+                      </AppText>
+                      {/* Counts smoothly to the new figure whenever the
+                          discount changes; a11y reads the exact ₹. */}
+                      <CountUp value={payable} format={formatCurrency} variant="figure" style={{ color: colors.ownerAccentDeep }} />
+                    </View>
+                  </WorkspaceCard>
+                  <WorkspaceWell style={{ marginTop: spacing.xs }}>
+                    <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
+                      Discounts need the owner or receptionist authorisation and are audited. Corrections later go through reversal records, never silent edits.
+                    </AppText>
+                  </WorkspaceWell>
+                </WorkspaceSection>
+              </RiseIn>
+            )}
 
-      {/* Honest recording sheet */}
-      <ModalSheet
-        visible={recordedOpen}
-        onClose={() => setRecordedOpen(false)}
-        title="Recorded for verification"
-        subtitle="Not verified yet">
-        <AppText variant="body">
-          The entry is written to the queue with {member ? formatCurrency(payable) : 'the payable amount'}, {method.toUpperCase()}
-          {utr ? `, reference ${utr}` : ''}. Verification against the UPI statement happens in Part 4; only then does membership extend and the receipt print.
-        </AppText>
-        <AppText variant="label" tone="muted" style={{ marginTop: spacing.xs }}>
-          Duplicate references are rejected server-side, and financial records are immutable once verified.
-        </AppText>
-        <View style={{ marginTop: spacing.sm }}>
-          <Button label="Close" variant="secondary" fullWidth onPress={() => setRecordedOpen(false)} />
-        </View>
-      </ModalSheet>
-    </Screen>
+            {/* Step 4 — Choose method */}
+            {member && plan && !invalidDiscount && (
+              <RiseIn index={3} style={{ marginTop: spacing.sm }}>
+                <WorkspaceSection title="4 · Payment method">
+                  <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                    <MethodOption label="UPI" selected={method === 'upi'} icon="phone-portrait-outline" onPress={() => setMethod('upi')} />
+                    <MethodOption label="Cash" selected={method === 'cash'} icon="cash-outline" onPress={() => setMethod('cash')} />
+                  </View>
+                  {method === 'upi' ? (
+                    <WorkspaceCard style={{ marginTop: spacing.sm }}>
+                      <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
+                        Pay by UPI
+                      </AppText>
+                      <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing['3xs'] }}>
+                        The member pays {formatCurrency(payable)} into {demoGymName}&apos;s UPI ID {qrConfig.upiId}.
+                      </AppText>
+                      <View style={{ marginTop: spacing.sm, alignItems: 'center' }}>
+                        {qrConfig.customImageUri ? (
+                          <View style={{ alignItems: 'center', gap: spacing.xs }}>
+                            <View
+                              style={{
+                                padding: spacing.sm,
+                                backgroundColor: '#FFFFFF', // QR modules require max scanner contrast
+                                borderRadius: tokens.radius.sm,
+                                borderWidth: 1,
+                                borderColor: colors.ownerRule,
+                              }}>
+                              <Image
+                                source={{ uri: qrConfig.customImageUri }}
+                                style={{ width: 200, height: 200 }}
+                                contentFit="contain"
+                                accessibilityLabel="The gym's configured payment QR image"
+                              />
+                            </View>
+                            <AppText variant="caption" align="center" style={{ color: colors.ownerInkMuted, maxWidth: 300 }}>
+                              The configured QR image carries no member amount — the member keys {formatCurrency(payable)} in their UPI app. The app cannot decode or validate this image; its correctness was confirmed manually on the Payment QR screen.
+                            </AppText>
+                          </View>
+                        ) : upiPayload ? (
+                          <QrDisplay
+                            payload={upiPayload}
+                            size={184}
+                            caption="Standard UPI deep-link format carrying this member's payable amount. Session-configured UPI ID — edited on the Payment QR screen; the account is not verified."
+                          />
+                        ) : (
+                          <AppText variant="caption" align="center" style={{ color: colors.ownerWarningDeep }}>
+                            The gym&apos;s UPI ID is not configured, so no payment QR can be shown. Collect by cash or record the reference without the QR.
+                          </AppText>
+                        )}
+                      </View>
+                      <View style={{ marginTop: spacing.sm }}>
+                        <TextField
+                          label="UTR or transaction reference"
+                          placeholder="Reference from the member's UPI app"
+                          value={utr}
+                          onChangeText={(v) => {
+                            setUtr(v);
+                            setUtrError(null);
+                          }}
+                          error={utrError}
+                          autoCapitalize="characters"
+                        />
+                      </View>
+                      <AppText variant="caption" style={{ color: colors.ownerWarningDeep, marginTop: spacing.xs }}>
+                        Entering a reference never verifies the payment — verification happens against the UPI statement by authorised staff. The entry is recorded as awaiting verification.
+                      </AppText>
+                    </WorkspaceCard>
+                  ) : (
+                    <WorkspaceWell style={{ marginTop: spacing.sm }}>
+                      <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
+                        Cash is counted at the desk and recorded against {formatCurrency(payable)} for verification. The owner verifies physical collections daily — a recorded cash entry is never treated as verified here.
+                      </AppText>
+                    </WorkspaceWell>
+                  )}
+                  <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
+                    Recorded entries live in this session only and reset when the app restarts — nothing is sent to a server.
+                  </AppText>
+                </WorkspaceSection>
+              </RiseIn>
+            )}
+
+            {/* Step 5 — Review */}
+            {member && plan && !invalidDiscount && (
+              <RiseIn index={4} style={{ marginTop: spacing.sm }}>
+                <WorkspaceSection title="5 · Review before recording">
+                  <WorkspaceCard>
+                    {detailRow('Member', `${member.name} · ${memberDisplayId(member.id)}`)}
+                    {detailRow('Plan', `${plan.name} · ${durationLabel[plan.duration]}`)}
+                    {detailRow('Type', isRenewal ? 'Renewal (locked price)' : 'New membership')}
+                    {detailRow('Original price', formatCurrency(basePrice))}
+                    {detailRow('Discount', discount > 0 ? `${discount}% · − ${formatCurrency(discountAmount)}` : 'None')}
+                    {detailRow('Final amount', formatCurrency(payable), true)}
+                    {detailRow('Payment method', method === 'upi' ? 'UPI' : 'Cash')}
+                    {detailRow('Reference', method === 'upi' ? utrValue : 'Not applicable — cash')}
+                  </WorkspaceCard>
+                  <AppText variant="caption" style={{ color: colors.ownerWarningDeep, marginTop: spacing.xs }}>
+                    {method === 'upi'
+                      ? 'This will be recorded as awaiting verification. A UTR is a recorded reference, not proof of payment — nothing is marked verified here.'
+                      : 'This will be recorded as awaiting verification. Cash entries are verified against the owner\'s daily count, never by this screen.'}
+                  </AppText>
+                  <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
+                    <Button
+                      label={saving ? 'Recording…' : 'Confirm and record'}
+                      icon="checkmark-outline"
+                      fullWidth
+                      disabled={saving}
+                      onPress={confirmRecord}
+                    />
+                    <Button label="Back — correct details" variant="secondary" fullWidth onPress={() => setStep(4)} />
+                  </View>
+                </WorkspaceSection>
+              </RiseIn>
+            )}
+
+            {/* Per-step Continue / Back controls (steps 1–4) */}
+            {step < 5 && (
+              <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.md }}>
+                {step > 1 && <Button label="Back" variant="secondary" onPress={goBack} />}
+                <Button
+                  label={step === 4 ? 'Review payment' : 'Continue'}
+                  icon="arrow-forward-outline"
+                  disabled={!stepReady[step]}
+                  onPress={goNext}
+                />
+              </View>
+            )}
+
+            {/* Pending queue (steps 1–4) — session store, never "verified" */}
+            {step < 5 && (
+              <RiseIn index={5} style={{ marginTop: spacing.md }}>
+                <WorkspaceSection title={`Awaiting verification (${pending.length})`}>
+                  {pending.length === 0 ? (
+                    <OwnerEmptyState icon="time-outline" title="Queue is clear" hint="Recorded entries appear here until the owner verifies them." />
+                  ) : (
+                    <OwnerListGroup label="Payments awaiting verification">
+                      {pending.map((p, i) => (
+                        <View key={p.id}>
+                          {i > 0 && <WorkspaceRowDivider />}
+                          <OwnerListRow
+                            leading={<OwnerMemberAvatar name={p.memberName} />}
+                            title={`${p.memberName} · ${formatCurrency(p.payable)}`}
+                            detail={`${p.utr ?? 'No reference on record'} · ${p.method.toUpperCase()}`}
+                            status={<OwnerStatusText {...paymentStatusInfo(p.state)} />}
+                          />
+                        </View>
+                      ))}
+                    </OwnerListGroup>
+                  )}
+                  <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs }}>
+                    Awaiting-check entries never activate membership and never read as verified. Full history lives on the Transaction History screen.
+                  </AppText>
+                </WorkspaceSection>
+              </RiseIn>
+            )}
+
+            <RiseIn index={6} style={{ marginTop: spacing.md }}>
+              <WorkspaceWell>
+                <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
+                  {records.length > 0
+                    ? `${pluralise(records.length, 'record', 'records')} in this session — every one resets when the app restarts. Nothing here is saved to a database.`
+                    : 'No payment records in this session yet.'}
+                </AppText>
+              </WorkspaceWell>
+            </RiseIn>
+          </View>
+        )}
+      </WorkspaceScreen>
+
+      <WorkspaceBottomNavigation active="more" items={navItems} />
+    </View>
+  );
+}
+
+/** Step progress: 6 segments, filled up to the current step, plus the
+ * step's label. Restrained — no animated morphs between steps. */
+function StepProgress({ current }: { current: number }) {
+  const tokens = useTokens();
+  const { colors, spacing, radius } = tokens;
+  return (
+    <View accessibilityLabel={`Step ${current} of 6: ${STEP_LABELS[current - 1]}`} accessible style={{ marginBottom: spacing.sm }}>
+      <View style={{ flexDirection: 'row', gap: 3 }}>
+        {STEP_LABELS.map((label, i) => (
+          <View
+            key={label}
+            style={{
+              flex: 1,
+              height: 4,
+              borderRadius: radius.pill,
+              backgroundColor: i + 1 < current ? colors.ownerSuccessDeep : i + 1 === current ? colors.ownerAccentDeep : colors.ownerRule,
+            }}
+          />
+        ))}
+      </View>
+      <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing['3xs'] }}>
+        Step {current} of 6 · {STEP_LABELS[current - 1]}
+      </AppText>
+    </View>
   );
 }
 
@@ -344,21 +744,19 @@ function MethodOption(props: { label: string; selected: boolean; icon: keyof typ
         minHeight: 52,
         borderRadius: radius.sm,
         borderWidth: 1,
-        borderColor: props.selected ? colors.accent : colors.rule,
-        backgroundColor: props.selected ? colors.accent : colors.surface,
+        borderColor: props.selected ? colors.ownerAccentDeep : colors.ownerRule,
+        backgroundColor: props.selected ? colors.ownerAccentTint : colors.ownerPanel,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: spacing.xs,
       }}>
-      <Ionicons name={props.icon} size={18} color={props.selected ? colors.accentInk : colors.inkMuted} />
+      <Ionicons name={props.icon} size={18} color={props.selected ? colors.ownerAccentDeep : colors.ownerInkMuted} />
       <AppText
         variant="label"
-        style={{ color: props.selected ? colors.accentInk : colors.ink, fontWeight: props.selected ? '600' : '500' }}>
+        style={{ color: props.selected ? colors.ownerAccentDeep : colors.ownerInk, fontWeight: props.selected ? '600' : '500' }}>
         {props.label}
       </AppText>
     </PressSurface>
   );
 }
-
-function noop() {}

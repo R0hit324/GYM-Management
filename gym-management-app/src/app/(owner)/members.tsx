@@ -18,6 +18,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppText } from '@/components/ui/text';
 import { SearchBar } from '@/components/ui/search-bar';
 import { RiseIn } from '@/components/ui/rise-in';
+import { Swap } from '@/components/ui/motion';
 import { SignOut } from '@/components/workspace-meta';
 import {
   OwnerScreen,
@@ -70,6 +71,7 @@ export default function OwnerMembersScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <OwnerScreen
         title="Members"
+        eyebrow="Member directory"
         subtitle="Every membership on the books"
         demo
         actions={<SignOut />}>
@@ -78,16 +80,19 @@ export default function OwnerMembersScreen() {
         </RiseIn>
 
         {rows.length === 0 ? (
-          <OwnerEmptyState
-            icon="people-outline"
-            title="No one matches"
-            hint="Try a shorter search or clear it."
-            actionLabel="Clear search"
-            onAction={() => setQuery('')}
-          />
+          <Swap swapKey={query}>
+            <OwnerEmptyState
+              icon="people-outline"
+              title="No one matches"
+              hint="Try a shorter search or clear it."
+              actionLabel="Clear search"
+              onAction={() => setQuery('')}
+            />
+          </Swap>
         ) : (
-          <RiseIn index={1}>
-            <OwnerSection title={`${rows.length} ${rows.length === 1 ? 'member' : 'members'}`}>
+          <Swap swapKey={query} style={{ marginTop: 0 }}>
+            <RiseIn index={1}>
+              <OwnerSection title={`${rows.length} ${rows.length === 1 ? 'member' : 'members'}`}>
               <OwnerListGroup label="All members">
                 {rows.map((m, i) => {
                   const plan = demoPlans.find((p) => p.id === m.planId);
@@ -104,8 +109,9 @@ export default function OwnerMembersScreen() {
                   );
                 })}
               </OwnerListGroup>
-            </OwnerSection>
-          </RiseIn>
+              </OwnerSection>
+            </RiseIn>
+          </Swap>
         )}
 
         <AppText variant="caption" align="center" style={{ marginTop: spacing.lg, color: colors.ownerInkSubtle }}>

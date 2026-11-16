@@ -1,22 +1,23 @@
 /**
  * Modal sheet: bottom sheet with scrim. Enter slides up (transform and
- * opacity only, 420 ms); exit slides down faster (65% of enter). Reduce
- * motion collapses both to instant. Native modal keeps focus discipline,
- * hardware back behaviour and platform semantics.
+ * opacity only, Motion.sheet = 300ms per the transition spec); exit slides
+ * down faster (exitFactor of enter). Reduce motion collapses both to
+ * instant. Native modal keeps focus discipline, hardware back behaviour
+ * and platform semantics.
  */
 import { ReactNode, useEffect, useState } from 'react';
 import { Modal, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing as ReEasing,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { Easing, Motion, Spacing } from '@/constants/theme';
-import { IconButton } from '@/components/ui/button';
+import { ButtonSurfaceContext, IconButton } from '@/components/ui/button';
 import { AppText } from '@/components/ui/text';
 import { useTokens } from '@/hooks/use-tokens';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
@@ -48,16 +49,16 @@ export function ModalSheet(props: {
       // Mount a frame later so the effect body never calls setState synchronously.
       const raf = requestAnimationFrame(() => setMounted(true));
       progress.value = withTiming(1, {
-        duration: reduce ? 1 : Motion.long,
+        duration: reduce ? 1 : Motion.sheet,
         easing: ReEasing.bezier(...Easing.out),
       });
       return () => cancelAnimationFrame(raf);
     } else if (progress.value > 0) {
       progress.value = withTiming(
         0,
-        { duration: reduce ? 1 : Motion.long * Motion.exitFactor, easing: ReEasing.bezier(...Easing.in) },
+        { duration: reduce ? 1 : Motion.sheet * Motion.exitFactor, easing: ReEasing.bezier(...Easing.in) },
         (finished) => {
-          if (finished) runOnJS(unmount)();
+          if (finished) scheduleOnRN(unmount);
         },
       );
     }
@@ -101,23 +102,28 @@ export function ModalSheet(props: {
             <View style={styles.handleContainer}>
               <View style={[styles.handle, { backgroundColor: colors.ruleStrong }]} />
             </View>
-            <View style={styles.header}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
-                  <AppText variant="title" style={{ color: sheetTitle }}>
-                    {props.title}
-                  </AppText>
-                  {props.toneBadge}
+            {/* The sheet is always a dark surface (auth or charcoal):
+                re-assert it so buttons nested in a light screen still get
+                the dark-surface palette. */}
+            <ButtonSurfaceContext.Provider value="dark">
+              <View style={styles.header}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
+                    <AppText variant="title" style={{ color: sheetTitle }}>
+                      {props.title}
+                    </AppText>
+                    {props.toneBadge}
+                  </View>
+                  {props.subtitle && (
+                    <AppText variant="label" style={{ color: auth ? colors.authInkMuted : colors.inkMuted, marginTop: spacing['3xs'] }}>
+                      {props.subtitle}
+                    </AppText>
+                  )}
                 </View>
-                {props.subtitle && (
-                  <AppText variant="label" style={{ color: auth ? colors.authInkMuted : colors.inkMuted, marginTop: spacing['3xs'] }}>
-                    {props.subtitle}
-                  </AppText>
-                )}
+                <IconButton name="close" label="Close" tone="muted" onPress={props.onClose} />
               </View>
-              <IconButton name="close" label="Close" tone="muted" onPress={props.onClose} />
-            </View>
-            {props.children}
+              {props.children}
+            </ButtonSurfaceContext.Provider>
           </View>
         </Animated.View>
       </View>

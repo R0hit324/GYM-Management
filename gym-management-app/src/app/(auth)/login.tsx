@@ -354,7 +354,7 @@ function openWorkspacePath(role: Role) {
     case 'owner':
       return '/(owner)/report';
     case 'receptionist':
-      return '/(reception)/attendance';
+      return '/(reception)/home';
     default:
       return '/(member)/attendance';
   }

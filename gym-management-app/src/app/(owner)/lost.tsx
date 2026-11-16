@@ -84,6 +84,7 @@ export default function LostMembersScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <OwnerScreen
         title="Lost Members"
+        eyebrow="Retention"
         subtitle="30 days without a visit, or expiry without a return"
         demo
         actions={<SignOut />}>

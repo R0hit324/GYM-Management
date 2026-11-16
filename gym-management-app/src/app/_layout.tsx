@@ -74,6 +74,10 @@ export default function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: Colors.paper },
+          // Vanguard motion: workspaces crossfade instead of the stock push.
+          // (Expo Router SDK 58's Stack does not expose custom transition
+          // timing on Android, so the platform-native timing is kept.)
+          animation: 'fade',
         }}
       >
         <Stack.Screen name="index" />

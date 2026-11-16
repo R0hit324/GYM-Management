@@ -15,7 +15,8 @@ import { AppText } from '@/components/ui/text';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { RiseIn } from '@/components/ui/rise-in';
-import { LineChart } from '@/components/charts/line-chart';
+import { CountUp } from '@/components/ui/motion';
+import { LineChart, attendanceLineColors } from '@/components/charts/line-chart';
 import { BarChart } from '@/components/charts/bar-chart';
 import {
   OwnerScreen,
@@ -84,6 +85,7 @@ export default function OwnerReportScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <OwnerScreen
         title="Reports"
+        eyebrow="Analytics"
         subtitle="Everyday ledger · verified numbers only"
         demo>
         <RiseIn style={{ marginTop: spacing.xs }}>
@@ -109,11 +111,16 @@ export default function OwnerReportScreen() {
                   <AppText variant="caption" style={{ color: colors.ownerInkMuted, fontWeight: '600' }}>
                     Verified collection
                   </AppText>
-                  <AppText variant="displayXL" numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ownerAccentDeep }}>
-                    {formatCurrency(collections)}
-                  </AppText>
+                  <CountUp
+                    value={collections}
+                    format={formatCurrency}
+                    variant="displayXL"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    style={{ color: colors.ownerAccentDeep }}
+                  />
                   <AppText variant="label" style={{ color: colors.ownerInkMuted, marginTop: spacing['3xs'] }}>
-                    {report === 'daily' ? 'verified today' : 'for the month window'}
+                    {report === 'daily' ? 'sample ledger · not the demo payment records’ total' : 'sample ledger · month window'}
                   </AppText>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
@@ -124,8 +131,8 @@ export default function OwnerReportScreen() {
             </OwnerCard>
             <View style={{ marginTop: spacing.sm }}>
               <OwnerStatRow>
-                <OwnerStatTile label="UPI" tone="mint" value={formatCurrency(demoOwnershipReport.upi)} hint="Statement-checked" icon="phone-portrait-outline" />
-                <OwnerStatTile label="Cash" tone="softBlue" value={formatCurrency(demoOwnershipReport.cash)} hint="Counted at the desk" icon="cash-outline" />
+                <OwnerStatTile label="UPI" tone="mint" value={formatCurrency(demoOwnershipReport.upi)} count={demoOwnershipReport.upi} countCurrency hint="Statement-checked" icon="phone-portrait-outline" />
+                <OwnerStatTile label="Cash" tone="softBlue" value={formatCurrency(demoOwnershipReport.cash)} count={demoOwnershipReport.cash} countCurrency hint="Counted at the desk" icon="cash-outline" />
               </OwnerStatRow>
             </View>
             <OwnerWell style={{ marginTop: spacing.sm }}>
@@ -133,7 +140,7 @@ export default function OwnerReportScreen() {
                 <AppText variant="caption" style={{ color: colors.ownerWarningDeep, fontWeight: '700' }}>
                   {formatCurrency(pendingAmount)}
                 </AppText>
-                {' '}is in the verification queue. It is deliberately excluded from the total: a submitted screenshot or UTR is not money until the check passes, and every correction lands as a reversal record in the audit trail.
+                {' '}is in the verification queue. It is deliberately excluded from the ledger total: a submitted screenshot or UTR is not money until the check passes, and every correction lands as a reversal record in the audit trail.
               </AppText>
             </OwnerWell>
           </OwnerSection>
@@ -142,17 +149,17 @@ export default function OwnerReportScreen() {
         <RiseIn index={2}>
           <OwnerSection title="Membership and floor">
             <OwnerStatRow>
-              <OwnerStatTile label="Total members" tone="blue" value={String(totalMembers)} icon="people-outline" />
-              <OwnerStatTile label="Active members" tone="violet" value={String(activeMembers)} icon="person-outline" />
+              <OwnerStatTile label="Total members" tone="blue" value={String(totalMembers)} count={totalMembers} icon="people-outline" />
+              <OwnerStatTile label="Active members" tone="violet" value={String(activeMembers)} count={activeMembers} icon="person-outline" />
             </OwnerStatRow>
             <OwnerStatRow>
-              <OwnerStatTile label="Attendance" tone="cyan" value={String(demoOwnershipReport.attendance)} hint="All recorded sessions" icon="barbell-outline" />
-              <OwnerStatTile label="Unique visitors" value={String(demoOwnershipReport.uniqueVisitors)} hint="Different members" icon="footsteps-outline" />
+              <OwnerStatTile label="Attendance" tone="cyan" value={String(demoOwnershipReport.attendance)} count={demoOwnershipReport.attendance} hint="All recorded sessions" icon="barbell-outline" />
+              <OwnerStatTile label="Unique visitors" value={String(demoOwnershipReport.uniqueVisitors)} count={demoOwnershipReport.uniqueVisitors} hint="Different members" icon="footsteps-outline" />
             </OwnerStatRow>
             <OwnerStatRow>
-              <OwnerStatTile label="New members" tone="violet" value={String(demoOwnershipReport.newMembers)} icon="person-add-outline" />
-              <OwnerStatTile label="Renewals" tone="mint" value={String(demoOwnershipReport.renewals)} icon="refresh-outline" />
-              <OwnerStatTile label="Applications pending" tone="amber" value={String(demoOwnershipReport.pendingApplications)} hint="Awaiting checks" icon="hourglass-outline" />
+              <OwnerStatTile label="New members" tone="violet" value={String(demoOwnershipReport.newMembers)} count={demoOwnershipReport.newMembers} icon="person-add-outline" />
+              <OwnerStatTile label="Renewals" tone="mint" value={String(demoOwnershipReport.renewals)} count={demoOwnershipReport.renewals} icon="refresh-outline" />
+              <OwnerStatTile label="Applications pending" tone="amber" value={String(demoOwnershipReport.pendingApplications)} count={demoOwnershipReport.pendingApplications} hint="Awaiting checks" icon="hourglass-outline" />
             </OwnerStatRow>
           </OwnerSection>
         </RiseIn>
@@ -160,16 +167,7 @@ export default function OwnerReportScreen() {
         <RiseIn index={3}>
           <OwnerSection style={{ marginTop: spacing.md }}>
             <OwnerChartCard title="Attendance, last 7 days" delta={attendanceDelta ? { label: attendanceDelta.label, direction: attendanceDelta.direction } : undefined}>
-              <LineChart
-                points={demoAttendanceTrend}
-                accent={colors.ownerCyanDeep}
-                valueColor={colors.ownerCyanDeep}
-                labelColor={colors.ownerInkMuted}
-                gridColor={colors.ownerRule}
-                captionColor={colors.ownerInk}
-                subCaptionColor={colors.ownerInkSubtle}
-                dotFill={colors.ownerPanel}
-              />
+              <LineChart points={demoAttendanceTrend} {...attendanceLineColors(colors)} />
             </OwnerChartCard>
           </OwnerSection>
         </RiseIn>
