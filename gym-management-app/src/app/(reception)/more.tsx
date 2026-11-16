@@ -13,6 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { RiseIn } from '@/components/ui/rise-in';
 import { SignOut } from '@/components/workspace-meta';
 import {
@@ -138,7 +139,7 @@ export default function ReceptionMoreScreen() {
                           justifyContent: 'center',
                           backgroundColor: colors.ownerPanelMuted,
                         }}>
-                        <Ionicons name={action.icon} size={18} color={toneColor(section.tone)} />
+                        <AnimatedIcon name={action.icon} size={18} color={toneColor(section.tone)} />
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
@@ -167,7 +168,7 @@ export default function ReceptionMoreScreen() {
                           </AppText>
                         )}
                       </View>
-                      <Ionicons name="chevron-forward" size={16} color={colors.ownerInkMuted} />
+                      <Ionicons name="chevron-forward" size={18} color={colors.ownerInkMuted} />
                     </PressSurface>
                   </View>
                 ))}

@@ -4,9 +4,10 @@
  * OwnerBottomNavigation rendered per screen; the routes and every screen's
  * content stay exactly as they were.
  *
- * Motion: pushes glide with the shared arrival easing (slightly longer than
- * the platform default, exits faster) — a Vanguard-style smooth slide that
- * stays native under the hood (react-native-screens).
+ * Motion: all four routes are bottom-nav peers, so page changes crossfade
+ * (system-timed by react-native-screens) — a page change, not a drill-in,
+ * the same motion language as the root workspace switch and the
+ * Receptionist pages.
  */
 import { Stack } from 'expo-router';
 
@@ -18,10 +19,7 @@ export default function OwnerLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: Colors.paper },
-        // Vanguard motion: screens slide in from the right rather than the
-        // stock push (platform-native timing; the forked Stack in Expo
-        // Router SDK 58 does not expose custom Android transition specs).
-        animation: 'slide_from_right',
+        animation: 'fade',
       }}>
       <Stack.Screen name="dashboard" />
       <Stack.Screen name="members" />

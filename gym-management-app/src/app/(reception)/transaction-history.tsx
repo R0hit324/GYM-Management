@@ -49,6 +49,7 @@ import {
   OwnerWell,
 } from '@/components/owner/owner-ui';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { useTokens } from '@/hooks/use-tokens';
 import { useSessionPayments, useSessionMembers } from '@/data/session';
 import { demoPlans } from '@/data/demo';
@@ -243,7 +244,7 @@ export default function TransactionHistoryScreen() {
                   borderRadius: tokens.radius.sm,
                 }}>
                 <AppText variant="heading" style={{ color: colors.ownerInk }}>{todayMode ? `Today · ${formatDate(today)}` : `${MONTH_NAMES[pos.month]} ${pos.year}`}</AppText>
-                <Ionicons name="chevron-down" size={14} color={colors.ownerInkMuted} />
+                <Ionicons name="chevron-down" size={16} color={colors.ownerInkMuted} />
               </PressSurface>
               <PressSurface
                 accessibilityRole="button"
@@ -293,7 +294,7 @@ export default function TransactionHistoryScreen() {
                   label="Reset filters"
                   variant="owner"
                   onPress={resetFilters}
-                  icon={<Ionicons name="close" size={14} color={colors.ownerInkMuted} />}
+                  icon={<AnimatedIcon name="close" size={16} color={colors.ownerInkMuted} />}
                 />
               )}
             </View>

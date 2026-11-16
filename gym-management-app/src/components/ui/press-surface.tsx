@@ -1,15 +1,21 @@
 /**
  * Pressable surface shared by buttons, cards and rows. Provides:
  * - press feedback within 120 ms (scale + opacity; nunca layout shift)
- * - a guaranteed >=44 px hit target (padded, never the visual bounds)
+ * - a guaranteed >=44 px hit target (native hitSlop pads the touch area
+ *   beyond the visual bounds without growing the layout box)
  * - light haptic on activation
  * - `disabled` semantics handled by the caller
+ *
+ * Structure: the caller's style IS the Pressable's style — the touch
+ * target equals the visual surface, so the whole row/tab/button responds,
+ * not just the label text inside it.
  */
 import { useCallback, useRef } from 'react';
-import { Pressable, PressableProps, GestureResponderEvent, StyleProp, View, ViewStyle, StyleSheet } from 'react-native';
+import { Pressable, PressableProps, GestureResponderEvent, StyleProp, ViewStyle, StyleSheet } from 'react-native';
 import { useAnimatedStyle, useSharedValue, withSpring, withTiming, Easing as ReEasing } from 'react-native-reanimated';
 
 import { Easing, Motion } from '@/constants/theme';
+import { IconPressContext } from '@/components/ui/icon-press';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { hapticPress } from '@/utils/haptics';
 interface PressSurfaceProps extends Omit<PressableProps, 'style'> {
@@ -77,18 +83,22 @@ export function PressSurface({
   );
 
   return (
-    <View style={[hitPadding > 0 && { padding: hitPadding }, style as StyleProp<ViewStyle>]}>
+    // Publish press progress so nested AnimatedIcons squash on press
+    // (shared value only — no re-renders). Under reduce-motion `active`
+    // never leaves 0, so icons stay still, matching the surface.
+    <IconPressContext.Provider value={active}>
       <Pressable
         accessibilityState={{ disabled: !!disabled }}
         onPressIn={handleIn}
         onPressOut={handleOut}
         onPress={handlePress}
         disabled={disabled}
-        style={animated as never}
+        style={[style as StyleProp<ViewStyle>, animated as never]}
+        hitSlop={hitPadding > 0 ? hitPadding : undefined}
         {...rest}>
         {children}
       </Pressable>
-    </View>
+    </IconPressContext.Provider>
   );
 }
 

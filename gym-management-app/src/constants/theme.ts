@@ -183,15 +183,15 @@ export type RadiusToken = keyof typeof Radius;
  */
 export const Type = {
   displayXL: { fontSize: 40, lineHeight: 44, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
-  display: { fontSize: 28, lineHeight: 32, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
-  title: { fontSize: 22, lineHeight: 26, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
-  heading: { fontSize: 18, lineHeight: 22, fontFamily: 'BarlowCondensed_700' as const, letterSpacing: 0 },
+  display: { fontSize: 30, lineHeight: 34, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
+  title: { fontSize: 24, lineHeight: 28, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
+  heading: { fontSize: 20, lineHeight: 24, fontFamily: 'BarlowCondensed_700' as const, letterSpacing: 0 },
   body: { fontSize: 16, lineHeight: 24, fontFamily: 'Barlow_400' as const, letterSpacing: 0 },
-  bodyStrong: { fontSize: 16, lineHeight: 24, fontFamily: 'Barlow_600' as const, letterSpacing: 0 },
-  label: { fontSize: 13, lineHeight: 18, fontFamily: 'Barlow_500' as const, letterSpacing: 0 },
+  bodyStrong: { fontSize: 17, lineHeight: 25, fontFamily: 'Barlow_600' as const, letterSpacing: 0 },
+  label: { fontSize: 14, lineHeight: 19, fontFamily: 'Barlow_500' as const, letterSpacing: 0 },
   caption: { fontSize: 12, lineHeight: 16, fontFamily: 'Barlow_400' as const, letterSpacing: 0 },
-  figure: { fontSize: 28, lineHeight: 30, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
-  figureSmall: { fontSize: 20, lineHeight: 22, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
+  figure: { fontSize: 32, lineHeight: 34, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
+  figureSmall: { fontSize: 22, lineHeight: 24, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0 },
   // Buttons: condensed 800, title case ("Sign in", "Next"). Amber fills take
   // the dark ink label (verified ≥4.5:1 at any size); danger fills keep white.
   button: { fontSize: 19, lineHeight: 22, fontFamily: 'BarlowCondensed_800' as const, letterSpacing: 0.2 },

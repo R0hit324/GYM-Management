@@ -10,6 +10,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { useTokens } from '@/hooks/use-tokens';
 
 export function ActionTile(props: {
@@ -59,7 +60,7 @@ export function ActionTile(props: {
             justifyContent: 'center',
             backgroundColor: accent ? colors.accentBg : colors.surfaceAlt,
           }}>
-          <Ionicons
+          <AnimatedIcon
             name={props.icon}
             size={19}
             color={accent ? colors.accentBright : colors.inkMuted}

@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { PressSurface } from '@/components/ui/press-surface';
+import { RiseIn } from '@/components/ui/rise-in';
 import { DemoBadge } from '@/components/ui/demo-badge';
 import {
   AuthHeader,
@@ -120,26 +121,37 @@ export default function LoginScreen() {
           <ScrollView
             contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xl }}
             keyboardShouldPersistTaps="handled">
-            <AuthHeading muted="Welcome " emphasis="back," />
-            <AppText variant="label" style={{ color: colors.authInkSubtle, marginTop: spacing['3xs'] }}>
-              Sign in to continue your fitness journey.
-            </AppText>
+            {/* Entrance: heading → subtitle → category → fields → CTA,
+                staggered by the shared RiseIn (40ms steps, once per mount).
+                Error banners animate themselves when they mount. */}
+            <RiseIn>
+              <AuthHeading muted="Welcome " emphasis="back," />
+            </RiseIn>
+            <RiseIn index={1}>
+              <AppText variant="label" style={{ color: colors.authInkSubtle, marginTop: spacing['3xs'] }}>
+                Sign in to continue your fitness journey.
+              </AppText>
+            </RiseIn>
 
             {/* Account category — expectation only; the backend verifies role */}
-            <CategorySelector
-              categories={roleOrder.map((r) => ({ id: r as AuthCategory, label: roleMeta[r].label, blurb: roleMeta[r].blurb }))}
-              value={role as AuthCategory}
-              onChange={pickRole}
-              accessibilityHint="Pick what you expect to be. The gym verifies your actual role after sign-in."
-              style={{ marginTop: spacing.md }}
-            />
-            <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.xs }}>
-              This is only what you expect to be. The gym verifies your actual role after sign-in.
-            </AppText>
+            <RiseIn index={2}>
+              <CategorySelector
+                categories={roleOrder.map((r) => ({ id: r as AuthCategory, label: roleMeta[r].label, blurb: roleMeta[r].blurb }))}
+                value={role as AuthCategory}
+                onChange={pickRole}
+                accessibilityHint="Pick what you expect to be. The gym verifies your actual role after sign-in."
+                style={{ marginTop: spacing.md }}
+              />
+              <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.xs }}>
+                This is only what you expect to be. The gym verifies your actual role after sign-in.
+              </AppText>
+            </RiseIn>
 
-            {/* Security note for staff roles */}
+            {/* Security note for staff roles — replays subtly when the
+                selection changes (keyed remount, same 40ms rise). */}
             {role !== 'member' && (
-              <View
+              <RiseIn key={role} index={3}>
+                <View
                 style={{
                   marginTop: spacing.sm,
                   backgroundColor: colors.infoBg,
@@ -157,12 +169,14 @@ export default function LoginScreen() {
                       : 'Receptionist accounts are created by the gym owner, not here. Multi-factor authentication is required.'}
                   </AppText>
                 </View>
-              </View>
+                </View>
+              </RiseIn>
             )}
 
             {/* Pill fields */}
-            <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-              <TextField
+            <RiseIn index={4}>
+              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                <TextField
                 label="Email address"
                 appearance="auth"
                 placeholder={submittedPlaceholder(role)}
@@ -199,7 +213,8 @@ export default function LoginScreen() {
                   Forgot password?
                 </AppText>
               </PressSurface>
-            </View>
+              </View>
+            </RiseIn>
 
             {submitError && (
               <View style={{ marginTop: spacing.xs }}>
@@ -208,7 +223,8 @@ export default function LoginScreen() {
             )}
 
             {/* White pill CTA */}
-            <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+            <RiseIn index={5}>
+              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
               <Button
                 label={submitting ? 'Checking details' : 'Sign in'}
                 icon={submitting ? undefined : 'log-in-outline'}
@@ -230,25 +246,29 @@ export default function LoginScreen() {
                   Preview the workspaces (demo)
                 </AppText>
               </PressSurface>
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', marginTop: spacing.xs }}>
-              <View style={{ flex: 1 }}>
-                <DemoBadge label="No server connected" />
               </View>
-              <AppText variant="caption" style={{ color: colors.authInkSubtle, textAlign: 'right', flex: 1 }}>
-                Sign-in, OTP and payments arrive with the backend in Parts 2 to 4.
-              </AppText>
-            </View>
+            </RiseIn>
+
+            <RiseIn index={6}>
+              <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', marginTop: spacing.xs }}>
+                <View style={{ flex: 1 }}>
+                  <DemoBadge label="No server connected" />
+                </View>
+                <AppText variant="caption" style={{ color: colors.authInkSubtle, textAlign: 'right', flex: 1 }}>
+                  Sign-in, OTP and payments arrive with the backend in Parts 2 to 4.
+                </AppText>
+              </View>
+            </RiseIn>
 
             {/* Member registration entry point — minimal text link */}
-            <View
-              style={{
-                borderTopWidth: 1,
-                borderTopColor: colors.authRule,
-                paddingTop: spacing.sm,
-                marginTop: spacing.md,
-              }}>
+            <RiseIn index={7}>
+              <View
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: colors.authRule,
+                  paddingTop: spacing.sm,
+                  marginTop: spacing.md,
+                }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs }}>
                 <AppText variant="label" style={{ color: colors.authInkMuted }}>
                   New to the gym?
@@ -268,7 +288,8 @@ export default function LoginScreen() {
               <AppText variant="caption" align="center" style={{ color: colors.authInkSubtle, marginTop: spacing['3xs'] }}>
                 Members join online. Staff accounts are issued by the owner.
               </AppText>
-            </View>
+              </View>
+            </RiseIn>
 
             <AppText variant="caption" align="center" style={{ color: colors.authInkSubtle, marginTop: spacing.md }}>
               Sessions, password recovery and account security land in Part 2. Nothing on this screen is sent anywhere.

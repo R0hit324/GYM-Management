@@ -22,6 +22,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { useTokens } from '@/hooks/use-tokens';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'onAccent' | 'primarySoft';
@@ -160,7 +161,7 @@ export function Button(
           <ActivityIndicator size="small" color={v.fg} />
         ) : (
           <>
-            {icon && <Ionicons name={icon} size={size === 'medium' ? 19 : 16} color={v.fg} />}
+            {icon && <AnimatedIcon name={icon} size={size === 'medium' ? 19 : 16} color={v.fg} />}
             <Text style={textSizeStyle}>{label}</Text>
           </>
         )}
@@ -211,10 +212,10 @@ export function IconButton(props: {
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <Ionicons name={props.name} size={20} color={color} />
+          <AnimatedIcon name={props.name} size={20} color={color} />
         </View>
       ) : (
-        <Ionicons name={props.name} size={22} color={color} />
+        <AnimatedIcon name={props.name} size={22} color={color} />
       )}
     </PressSurface>
   );

@@ -20,17 +20,20 @@
  * only, and every number keeps its real value (CountUp settles exactly).
  */
 import { ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
-import type { ComponentRef, ReactNode } from 'react';
-import { useContext } from 'react';
+import { useContext, useEffect, type ComponentRef, type ReactNode } from 'react';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import ReAnimated, { Easing as ReEasing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/text';
 import { ButtonSurfaceContext, type ButtonSurface } from '@/components/ui/button';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { DemoDisclosure } from '@/components/ui/demo-badge';
 import { DotPattern } from '@/components/auth/auth-ui';
+import { Easing, Motion } from '@/constants/theme';
+import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { useTokens } from '@/hooks/use-tokens';
 
 /**
@@ -160,6 +163,38 @@ export interface WorkspaceNavItem {
 }
 
 /**
+ * Trial motion: the floating nav pill rises into place when a page
+ * arrives (12 px up + fade, once per mount, transform/opacity only).
+ * Pairs with the page crossfade so a page change reads as one
+ * choreographed arrival. Reduce-motion renders it instantly. Delete the
+ * two `NavEntrance` wrappers (Reception + Owner bars) to revert.
+ */
+export function NavEntrance({ children }: { children: ReactNode }) {
+  const reduce = useReduceMotion();
+  const progress = useSharedValue(reduce ? 1 : 0);
+
+  useEffect(() => {
+    if (reduce) {
+      return; // progress already settled
+    }
+    // Mount a frame later so the effect body never writes a shared value
+    // synchronously with the first render; 60ms delay lets the page
+    // crossfade land first.
+    const raf = requestAnimationFrame(() => {
+      progress.set(withDelay(60, withTiming(1, { duration: Motion.short, easing: ReEasing.bezier(...Easing.out) })));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [reduce, progress]);
+
+  const animated = useAnimatedStyle(() => ({
+    opacity: progress.get(),
+    transform: [{ translateY: (1 - progress.get()) * 12 }],
+  }));
+
+  return <ReAnimated.View style={animated}>{children}</ReAnimated.View>;
+}
+
+/**
  * Fino-style floating bottom navigation, shared by the Receptionist
  * workspace (and available to future multi-route member navigation).
  * Identical geometry to the Owner pill: white surface, hairline border,
@@ -173,23 +208,24 @@ export function WorkspaceBottomNavigation(props: { active: string; items: readon
 
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, 8) + 6 }}>
-      <View
-        accessibilityRole="tablist"
-        style={{
-          flexDirection: 'row',
-          marginHorizontal: spacing.lg,
-          backgroundColor: colors.ownerPanel,
-          borderRadius: radius.pill,
-          borderWidth: 1,
-          borderColor: colors.ownerRule,
-          paddingVertical: spacing['3xs'],
-          shadowColor: '#000000',
-          shadowOpacity: 0.18,
-          shadowOffset: { width: 0, height: 6 },
-          shadowRadius: 14,
-          elevation: 6,
-        }}>
-        {props.items.map((item) => {
+      <NavEntrance>
+        <View
+          accessibilityRole="tablist"
+          style={{
+            flexDirection: 'row',
+            marginHorizontal: spacing.lg,
+            backgroundColor: colors.ownerPanel,
+            borderRadius: radius.pill,
+            borderWidth: 1,
+            borderColor: colors.ownerRule,
+            paddingVertical: spacing['3xs'],
+            shadowColor: '#000000',
+            shadowOpacity: 0.18,
+            shadowOffset: { width: 0, height: 6 },
+            shadowRadius: 14,
+            elevation: 6,
+          }}>
+          {props.items.map((item) => {
           const active = props.active === item.key;
           return (
             <PressSurface
@@ -210,10 +246,13 @@ export function WorkspaceBottomNavigation(props: { active: string; items: readon
                   paddingVertical: spacing['3xs'],
                   backgroundColor: active ? colors.ownerAccentTint : 'transparent',
                 }}>
-                <Ionicons
+                <AnimatedIcon
                   name={item.icon}
+                  active={active}
+                  animateOnMount={active}
                   size={20}
-                  color={active ? colors.ownerAccentDeep : colors.ownerInkMuted}
+                  color={colors.ownerInkMuted}
+                  activeColor={colors.ownerAccentDeep}
                 />
                 <AppText
                   variant="caption"
@@ -228,7 +267,8 @@ export function WorkspaceBottomNavigation(props: { active: string; items: readon
             </PressSurface>
           );
         })}
-      </View>
+        </View>
+      </NavEntrance>
     </View>
   );
 }

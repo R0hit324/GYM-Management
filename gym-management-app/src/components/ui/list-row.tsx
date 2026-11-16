@@ -41,7 +41,7 @@ export function ListRow(props: {
         {props.meta}
       </View>
       {props.chevron && (
-        <Ionicons name="chevron-forward" size={16} color={colors.inkSubtle} />
+        <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
       )}
     </>
   );

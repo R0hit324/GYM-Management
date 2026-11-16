@@ -10,8 +10,8 @@
  * preserved by default; Owner screens render outside the light provider
  * and keep today's look.
  */
-import { useContext, useState } from 'react';
-import { StyleSheet, TextInput, TextInputProps, View } from 'react-native';
+import { useContext, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, StyleSheet, TextInput, TextInputProps, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ButtonSurfaceContext, IconButton } from '@/components/ui/button';
@@ -27,6 +27,7 @@ export function SearchBar(props: {
   const { colors, spacing, radius, type, control } = tokens;
   const light = useContext(ButtonSurfaceContext) === 'light';
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   const inputProps: TextInputProps = {
     value: props.value,
@@ -44,7 +45,15 @@ export function SearchBar(props: {
     light ? (focused ? colors.ownerAccentDeep : colors.ownerDot) : colors.rule;
 
   return (
-    <View
+    // The whole pill is tappable to focus: on Android the TextInput's own
+    // touch area is only its text box, so taps on the pill's padding or
+    // the icon well previously did nothing. The input keeps its own
+    // handlers — a direct tap on the text still focuses it normally, and
+    // the clear button (a nested Pressable) wins its own touch.
+    <Pressable
+      accessibilityLabel={props.label}
+      accessibilityRole="search"
+      onPress={() => inputRef.current?.focus()}
       style={[
         styles.row,
         {
@@ -59,6 +68,7 @@ export function SearchBar(props: {
       ]}>
       {light ? (
         <View
+          pointerEvents="none"
           style={{
             width: 36,
             height: 36,
@@ -70,11 +80,12 @@ export function SearchBar(props: {
           <Ionicons name="search" size={17} color={focused ? colors.ownerAccentDeep : colors.ownerInkMuted} />
         </View>
       ) : (
-        <View style={{ width: 40, alignItems: 'center' }}>
+        <View pointerEvents="none" style={{ width: 40, alignItems: 'center' }}>
           <Ionicons name="search" size={18} color={colors.inkSubtle} />
         </View>
       )}
       <TextInput
+        ref={inputRef}
         {...inputProps}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -82,7 +93,7 @@ export function SearchBar(props: {
       {props.value.length > 0 && (
         <IconButton name="close-circle" label="Clear search" tone="muted" onPress={() => props.onChange('')} />
       )}
-    </View>
+    </Pressable>
   );
 }
 

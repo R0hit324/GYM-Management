@@ -40,6 +40,7 @@ import { Button, IconButton } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { SearchBar } from '@/components/ui/search-bar';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { RiseIn } from '@/components/ui/rise-in';
 import { CountUp, SuccessPop } from '@/components/ui/motion';
 import { QrDisplay } from '@/components/ui/qr-display';
@@ -751,7 +752,13 @@ function MethodOption(props: { label: string; selected: boolean; icon: keyof typ
         justifyContent: 'center',
         gap: spacing.xs,
       }}>
-      <Ionicons name={props.icon} size={18} color={props.selected ? colors.ownerAccentDeep : colors.ownerInkMuted} />
+      <AnimatedIcon
+        name={props.icon}
+        active={props.selected}
+        size={18}
+        color={colors.ownerInkMuted}
+        activeColor={colors.ownerAccentDeep}
+      />
       <AppText
         variant="label"
         style={{ color: props.selected ? colors.ownerAccentDeep : colors.ownerInk, fontWeight: props.selected ? '600' : '500' }}>

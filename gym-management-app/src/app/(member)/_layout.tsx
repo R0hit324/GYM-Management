@@ -15,6 +15,9 @@ export default function MemberLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: Colors.ownerBg },
+        // Same native push as the Receptionist/Owner workspaces so every
+        // in-workspace screen glides from the right, system-timed.
+        animation: 'slide_from_right',
       }}>
       <Stack.Screen name="attendance" />
     </Stack>

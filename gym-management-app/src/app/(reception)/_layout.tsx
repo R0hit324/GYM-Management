@@ -1,8 +1,9 @@
 /**
  * Receptionist workspace routes. Three floating bottom tabs (Home / Members
- * / More) are rendered per screen by WorkspaceBottomNavigation; pushes
- * glide with the shared slide_from_right easing, matching the Owner
- * workspace. Every screen sits in the unified Fino chrome.
+ * / More) are rendered per screen by WorkspaceBottomNavigation. Motion:
+ * peer page changes (tabs and menu sections) crossfade — a page change,
+ * not a drill-in — while true detail screens keep the directional push.
+ * Every screen sits in the unified Fino chrome.
  */
 import { Stack } from 'expo-router';
 
@@ -14,11 +15,14 @@ export default function ReceptionLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: Colors.ownerBg },
-        animation: 'slide_from_right',
+        // Page change: peer pages crossfade (system-timed, applied to both
+        // directions) — the same motion language as the root workspace
+        // switch. True detail drill-ins keep the directional push.
+        animation: 'fade',
       }}>
       <Stack.Screen name="home" />
       <Stack.Screen name="members" />
-      <Stack.Screen name="member-profile" />
+      <Stack.Screen name="more" />
       <Stack.Screen name="attendance" />
       <Stack.Screen name="door-qr" />
       <Stack.Screen name="fees" />
@@ -27,7 +31,8 @@ export default function ReceptionLayout() {
       <Stack.Screen name="transaction-history" />
       <Stack.Screen name="plans" />
       <Stack.Screen name="freeze" />
-      <Stack.Screen name="more" />
+      {/* Detail drill-in from a member row keeps the directional push. */}
+      <Stack.Screen name="member-profile" options={{ animation: 'slide_from_right' }} />
     </Stack>
   );
 }

@@ -31,6 +31,8 @@ import { CountUp } from '@/components/ui/motion';
 import { RiseIn } from '@/components/ui/rise-in';
 import { PressSurface } from '@/components/ui/press-surface';
 import { DemoDisclosure } from '@/components/ui/demo-badge';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
+import { NavEntrance } from '@/components/workspace/workspace-ui';
 import { DotPattern } from '@/components/auth/auth-ui';
 import { useTokens } from '@/hooks/use-tokens';
 import type { TrendPoint } from '@/types/domain';
@@ -324,7 +326,7 @@ export function AttentionItemRow(props: { item: AttentionItem; onPress?: () => v
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs }}>
-          <AppText variant="label" numberOfLines={1} style={{ color: colors.ownerInk, fontWeight: '600', flexShrink: 1 }}>
+          <AppText variant="bodyStrong" numberOfLines={1} style={{ color: colors.ownerInk, flexShrink: 1 }}>
             {props.item.title}
           </AppText>
           {props.item.statusLabel && (
@@ -342,7 +344,7 @@ export function AttentionItemRow(props: { item: AttentionItem; onPress?: () => v
           </AppText>
         )}
       </View>
-      {navigable && <Ionicons name="chevron-forward" size={16} color={colors.ownerInkSubtle} />}
+      {navigable && <Ionicons name="chevron-forward" size={18} color={colors.ownerInkMuted} />}
     </View>
   );
 
@@ -512,23 +514,24 @@ export function OwnerBottomNavigation(props: { active: OwnerNavKey }) {
 
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, 8) + 6 }}>
-      <View
-        accessibilityRole="tablist"
-        style={{
-          flexDirection: 'row',
-          marginHorizontal: spacing.lg,
-          backgroundColor: colors.ownerPanel,
-          borderRadius: radius.pill,
-          borderWidth: 1,
-          borderColor: colors.ownerRule,
-          paddingVertical: spacing['3xs'],
-          shadowColor: '#000000',
-          shadowOpacity: 0.18,
-          shadowOffset: { width: 0, height: 6 },
-          shadowRadius: 14,
-          elevation: 6,
-        }}>
-        {navItems.map((item) => {
+      <NavEntrance>
+        <View
+          accessibilityRole="tablist"
+          style={{
+            flexDirection: 'row',
+            marginHorizontal: spacing.lg,
+            backgroundColor: colors.ownerPanel,
+            borderRadius: radius.pill,
+            borderWidth: 1,
+            borderColor: colors.ownerRule,
+            paddingVertical: spacing['3xs'],
+            shadowColor: '#000000',
+            shadowOpacity: 0.18,
+            shadowOffset: { width: 0, height: 6 },
+            shadowRadius: 14,
+            elevation: 6,
+          }}>
+          {navItems.map((item) => {
           const active = props.active === item.key;
           return (
             <PressSurface
@@ -549,10 +552,13 @@ export function OwnerBottomNavigation(props: { active: OwnerNavKey }) {
                   paddingVertical: spacing['3xs'],
                   backgroundColor: active ? colors.ownerAccentTint : 'transparent',
                 }}>
-                <Ionicons
+                <AnimatedIcon
                   name={item.icon}
+                  active={active}
+                  animateOnMount={active}
                   size={20}
-                  color={active ? colors.ownerAccentDeep : colors.ownerInkMuted}
+                  color={colors.ownerInkMuted}
+                  activeColor={colors.ownerAccentDeep}
                 />
                 <AppText
                   variant="caption"
@@ -567,7 +573,8 @@ export function OwnerBottomNavigation(props: { active: OwnerNavKey }) {
             </PressSurface>
           );
         })}
-      </View>
+        </View>
+      </NavEntrance>
     </View>
   );
 }
@@ -631,7 +638,7 @@ export function OwnerStatTile(props: {
         light ? tokens.elevation.lightCard : null,
       ]}>
       {props.icon && (
-        <Ionicons name={props.icon} size={15} color={valueColor} />
+        <Ionicons name={props.icon} size={18} color={valueColor} />
       )}
       {props.count !== undefined ? (
         // Counts up to the real figure and sits exactly on it; the tile's
@@ -907,7 +914,7 @@ export function OwnerListRow(props: {
         )}
         {props.meta}
       </View>
-      {props.chevron && <Ionicons name="chevron-forward" size={16} color={colors.ownerInkSubtle} />}
+      {props.chevron && <Ionicons name="chevron-forward" size={18} color={colors.ownerInkMuted} />}
     </>
   );
 

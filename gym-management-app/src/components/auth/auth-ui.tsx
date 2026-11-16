@@ -14,11 +14,16 @@
  */
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import ReAnimated, { Easing as ReEasing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/text';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon, type GlyphName } from '@/components/ui/animated-icon';
+import { RiseIn } from '@/components/ui/rise-in';
+import { Easing, Motion } from '@/constants/theme';
+import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { useTokens } from '@/hooks/use-tokens';
 
 /**
@@ -37,6 +42,36 @@ export function DotPattern({ dot = '#CDCDCD', gap = 16 }: { dot?: string; gap?: 
       <Rect width="100%" height="100%" fill={`url(#${id})`} />
     </Svg>
   );
+}
+
+/**
+ * Logo entrance: the Pulse Gym mark settles in with a subtle opacity fade
+ * and a barely-there scale-up (0.97 → 1) — transform/opacity only, runs
+ * once per mount, reduce-motion renders the final state immediately.
+ */
+export function AuthLogoIn({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const reduce = useReduceMotion();
+  const progress = useSharedValue(reduce ? 1 : 0);
+
+  useEffect(() => {
+    if (reduce) {
+      progress.set(1);
+      return;
+    }
+    // Start a frame later so the effect body never writes a shared value
+    // synchronously with the first render.
+    const raf = requestAnimationFrame(() => {
+      progress.set(withTiming(1, { duration: Motion.short, easing: ReEasing.bezier(...Easing.out) }));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [reduce, progress]);
+
+  const animated = useAnimatedStyle(() => ({
+    opacity: progress.get(),
+    transform: [{ scale: 0.97 + 0.03 * progress.get() }],
+  }));
+
+  return <ReAnimated.View style={[style, animated]}>{children}</ReAnimated.View>;
 }
 
 /**
@@ -65,27 +100,29 @@ export function AuthHeader(props: { topRow?: ReactNode; style?: StyleProp<ViewSt
         </View>
       )}
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <View
-          accessible
-          accessibilityLabel="Pulse Gym"
-          style={{ alignItems: 'center', gap: spacing.xs }}>
+        <AuthLogoIn>
           <View
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: radius.pill,
-              backgroundColor: colors.authBg,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <Ionicons name="barbell" size={24} color={colors.authInk} />
+            accessible
+            accessibilityLabel="Pulse Gym"
+            style={{ alignItems: 'center', gap: spacing.xs }}>
+            <View
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: radius.pill,
+                backgroundColor: colors.authBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <Ionicons name="barbell" size={24} color={colors.authInk} />
+            </View>
+            <AppText
+              variant="label"
+              style={{ color: colors.authTopInk, letterSpacing: 4, fontWeight: '600' }}>
+              PULSE GYM
+            </AppText>
           </View>
-          <AppText
-            variant="label"
-            style={{ color: colors.authTopInk, letterSpacing: 4, fontWeight: '600' }}>
-            PULSE GYM
-          </AppText>
-        </View>
+        </AuthLogoIn>
       </View>
     </View>
   );
@@ -184,10 +221,12 @@ export function CategorySelector(props: {
                 backgroundColor: selected ? colors.authSelectedBg : colors.authField,
                 borderColor: selected ? colors.authAccent : colors.authRule,
               }}>
-              <Ionicons
-                name={categoryIcons[c.id]}
+              <AnimatedIcon
+                name={categoryIcons[c.id] as GlyphName}
+                active={selected}
                 size={15}
-                color={selected ? colors.authInk : colors.authInkSubtle}
+                color={colors.authInkSubtle}
+                activeColor={colors.authInk}
               />
               <AppText
                 variant="label"
@@ -206,28 +245,32 @@ export function CategorySelector(props: {
   );
 }
 
-/** Error banner for auth forms; reuses the shared semantic danger tokens. */
+/** Error banner for auth forms; reuses the shared semantic danger tokens.
+ *  Enters with the shared subtle rise (it mounts when the error appears),
+ *  so the message settles in instead of popping — reduce-motion aware. */
 export function AuthErrorMessage({ message }: { message: string }) {
   const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
   return (
-    <View
-      accessibilityRole="alert"
-      style={{
-        flexDirection: 'row',
-        gap: spacing.xs,
-        alignItems: 'flex-start',
-        backgroundColor: colors.dangerBg,
-        borderRadius: radius.sm,
-        borderWidth: 1,
-        borderColor: colors.rule,
-        padding: spacing.sm,
-      }}>
-      <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
-      <AppText variant="label" style={{ color: colors.dangerOnBg, flex: 1 }}>
-        {message}
-      </AppText>
-    </View>
+    <RiseIn>
+      <View
+        accessibilityRole="alert"
+        style={{
+          flexDirection: 'row',
+          gap: spacing.xs,
+          alignItems: 'flex-start',
+          backgroundColor: colors.dangerBg,
+          borderRadius: radius.sm,
+          borderWidth: 1,
+          borderColor: colors.rule,
+          padding: spacing.sm,
+        }}>
+        <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+        <AppText variant="label" style={{ color: colors.dangerOnBg, flex: 1 }}>
+          {message}
+        </AppText>
+      </View>
+    </RiseIn>
   );
 }
 

@@ -41,6 +41,7 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { PressSurface } from '@/components/ui/press-surface';
+import { AnimatedIcon } from '@/components/ui/animated-icon';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTokens } from '@/hooks/use-tokens';
 import { demoAttendance, demoMembers } from '@/data/demo';
@@ -380,7 +381,7 @@ function AlertRow(props: {
           justifyContent: 'center',
           backgroundColor: colors.ownerPanelMuted,
         }}>
-        <Ionicons name={props.icon} size={18} color={props.tone} />
+        <AnimatedIcon name={props.icon} size={18} color={props.tone} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <AppText variant="bodyStrong" numberOfLines={1} style={{ color: colors.ownerInk }}>
@@ -390,7 +391,7 @@ function AlertRow(props: {
           {props.detail}
         </AppText>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.ownerInkMuted} />
+      <Ionicons name="chevron-forward" size={18} color={colors.ownerInkMuted} />
     </PressSurface>
   );
 }
