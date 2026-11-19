@@ -8,10 +8,11 @@
  * details, and a month-level financial summary that stays independent of
  * search and filters so it remains a reliable month total.
  *
- * Data honesty (unchanged from the established demo architecture):
- * - Records come from the session store — the same source Payment QR and
+ * Data honesty:
+ * - Demo mode reads the session store — the same source Payment QR and
  *   Collect Payment read and write; desk-recorded entries appear here
- *   immediately and reset on restart. Nothing is database persistence.
+ *   immediately and reset on restart. Live mode reads the payment rows the
+ *   signed-in staff role is authorised to select (read-only).
  * - Only verified entries are collected revenue; a recorded UTR is just a
  *   recorded reference, never verification; pending is never revenue.
  * - Missing fields are never invented: a record without a UTR shows "No
@@ -52,9 +53,17 @@ import { PressSurface } from '@/components/ui/press-surface';
 import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { useTokens } from '@/hooks/use-tokens';
 import { useSessionPayments, useSessionMembers } from '@/data/session';
-import { demoPlans } from '@/data/demo';
+import { useMembers, usePayments, usePlans } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { paymentStatusInfo, monthPaymentTotals } from '@/utils/payment';
-import { formatCurrency, formatDate, formatTime, isSameLocalDay, pluralise } from '@/utils/format';
+import {
+  formatCurrency,
+  formatDate,
+  formatTime,
+  isSameLocalDay,
+  memberDisplayId,
+  pluralise,
+} from '@/utils/format';
 import { addMonth, MONTH_NAMES, type MonthPosition } from '@/utils/calendar';
 import type { PaymentRecord } from '@/types/domain';
 
@@ -83,19 +92,40 @@ function matchesFilter(p: PaymentRecord, filter: FilterKey): boolean {
   return true;
 }
 
-/** The member's business display number (GB-XXXX), the app-wide convention. */
-const memberDisplayId = (memberId: string) => memberId.replace('m-', 'GB-').toUpperCase();
-
 /** Plan names by id — plan prices change, but a recorded transaction keeps
  * its planId and amounts; the name is joined for display only. */
-const planById = new Map(demoPlans.map((p) => [p.id, p.name] as const));
 
 export default function TransactionHistoryScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
 
-  const records = useSessionPayments();
-  const members = useSessionMembers();
+  const paymentsResource = usePayments();
+  const membersResource = useMembers();
+  const plansResource = usePlans();
+  const sessionPayments = useSessionPayments();
+  const sessionMembers = useSessionMembers();
+  const live = paymentsResource.isLive;
+  // Demo mode keeps the session stores so desk-recorded entries and staged
+  // contact edits still appear; live mode reads authorised backend rows.
+  const records = live ? paymentsResource.data : sessionPayments;
+  const members = live ? membersResource.data : sessionMembers;
+  const planById = useMemo(
+    () => new Map(plansResource.data.map((p) => [p.id, p.name] as const)),
+    [plansResource.data],
+  );
+  const liveLoading =
+    paymentsResource.status === 'loading' ||
+    membersResource.status === 'loading' ||
+    plansResource.status === 'loading';
+  const hasError =
+    paymentsResource.status === 'error' ||
+    membersResource.status === 'error' ||
+    plansResource.status === 'error';
+  const refreshAll = () => {
+    paymentsResource.refresh();
+    membersResource.refresh();
+    plansResource.refresh();
+  };
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -202,8 +232,28 @@ export default function TransactionHistoryScreen() {
         title="Transaction History"
         eyebrow="Payments"
         subtitle="Every recorded entry, pending and verified"
-        demo
-        actions={<SignOut />}>
+        demo={!live}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}>
+        {hasError && (
+          <RiseIn>
+            <ErrorState
+              title="Transaction history could not load"
+              message={
+                paymentsResource.error ??
+                membersResource.error ??
+                plansResource.error ??
+                'The payment register is unavailable right now.'
+              }
+              onRetry={refreshAll}
+            />
+          </RiseIn>
+        )}
+        {live && paymentsResource.status === 'loading' && records.length === 0 ? (
+          <RiseIn style={{ marginTop: spacing.sm }}>
+            <SkeletonRow count={4} />
+          </RiseIn>
+        ) : null}
         {/* Period: today by default; chevrons browse months, the label opens
             the month/year picker. The selected period is always visible. */}
         <RiseIn>
@@ -440,7 +490,10 @@ export default function TransactionHistoryScreen() {
         <RiseIn index={4} style={{ marginTop: spacing.md }}>
           <WorkspaceWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-              Entries recorded at the desk live in the session and reset when the app restarts — nothing here is saved to a database or server. Phone search matches the members&apos; recorded phone numbers; transaction records themselves carry no phone field. {totals.totalCount === 0 ? `${MONTH_NAMES[pos.month]} ${pos.year} has no recorded transactions yet.` : ''}
+              {live
+                ? 'Showing the payment records your signed-in staff role is authorised to read. Only verified entries count as collected revenue; a recorded UTR alone never verifies a payment; pending is reported separately and is never revenue. Phone search matches the members’ recorded phone numbers; transaction records themselves carry no phone field.'
+                : 'Entries recorded at the desk live in the session and reset when the app restarts — nothing here is saved to a database or server. Phone search matches the members’ recorded phone numbers; transaction records themselves carry no phone field.'}{' '}
+              {totals.totalCount === 0 ? `${MONTH_NAMES[pos.month]} ${pos.year} has no recorded transactions yet.` : ''}
             </AppText>
           </WorkspaceWell>
         </RiseIn>

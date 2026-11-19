@@ -10,8 +10,9 @@
  * (dark ground, white greeting, light dot-pattern panel) with Owner
  * light-panel primitives — solid white cards, the membership status front
  * and centre, cyan/blue accents on progress figures. Everything stays
- * member-focused: no management information, just the journey. All data
- * shown is demo data and stays labelled as such.
+ * member-focused: no management information, just the journey. Demo mode
+ * keeps the approved sample data and its disclosure; live mode reads the
+ * member's own membership and attendance rows through the shared client.
  */
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
@@ -23,7 +24,7 @@ import { ActionGrid, ActionTile } from '@/components/ui/action-tile';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { RiseIn } from '@/components/ui/rise-in';
 import { CountUp, Meter } from '@/components/ui/motion';
-import { ErrorState, SkeletonRow } from '@/components/ui/feedback';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { AttendanceCalendar } from '@/components/attendance-calendar';
 import { SignOut } from '@/components/workspace-meta';
 import {
@@ -41,7 +42,9 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoAttendance, demoMemberHistory, demoMembers, demoPlans } from '@/data/demo';
+import { demoAttendance, demoMemberHistory, demoMembers } from '@/data/demo';
+import { useMyAttendance, useMyMembership, usePlans } from '@/services/data';
+import { displayMembershipStatus } from '@/utils/membership';
 import { formatTime, formatDate } from '@/utils/format';
 
 const scanStates = [
@@ -72,15 +75,59 @@ export default function MemberAttendanceScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  const myEvents = useMemo(() => demoAttendance.filter((e) => e.memberId === 'm-1042'), []);
-  // Calendar feeds on the generated demo history plus today's demo check-ins.
-  const calendarEvents = useMemo(() => [...demoMemberHistory, ...myEvents], [myEvents]);
+  const membershipResource = useMyMembership();
+  const attendanceResource = useMyAttendance();
+  const plansResource = usePlans();
+  const live = membershipResource.isLive;
 
-  // Membership summary — straight from the demo member record, labelled demo.
-  const me = useMemo(() => demoMembers.find((m) => m.id === 'm-1042'), []);
-  const myPlan = useMemo(() => demoPlans.find((p) => p.id === me?.planId), [me]);
+  const myEvents = useMemo(
+    () => (live ? attendanceResource.data : demoAttendance.filter((e) => e.memberId === 'm-1042')),
+    [live, attendanceResource.data],
+  );
+  // Live mode has no generated history: the calendar shows the member's own
+  // authorised attendance rows. Demo mode keeps its approved demo history.
+  const calendarEvents = useMemo(
+    () => (live ? myEvents : [...demoMemberHistory, ...myEvents]),
+    [live, myEvents],
+  );
+
+  // Membership summary — the member's own authorised row in live mode.
+  const me = live ? membershipResource.data : demoMembers.find((m) => m.id === 'm-1042') ?? null;
+  const myPlan = useMemo(
+    () => plansResource.data.find((p) => p.id === me?.planId),
+    [plansResource.data, me],
+  );
   const firstName = me ? me.name.split(' ')[0] : 'Member';
-  const isActive = me?.status === 'active';
+  const membershipStatus = me ? displayMembershipStatus(me) : null;
+  const statusText = membershipStatus
+    ? {
+        active: 'Active',
+        expiring: 'Expiring',
+        expired: 'Expired',
+        frozen: 'Frozen',
+        pendingPayment: 'Payment pending',
+      }[membershipStatus]
+    : 'Unknown';
+  const statusTone =
+    membershipStatus === 'active'
+      ? 'up'
+      : membershipStatus === 'frozen'
+        ? 'neutral'
+        : membershipStatus === 'pendingPayment'
+          ? 'action'
+          : membershipStatus === 'expired'
+            ? 'down'
+            : 'warning';
+  const liveLoading =
+    membershipResource.status === 'loading' ||
+    attendanceResource.status === 'loading' ||
+    plansResource.status === 'loading';
+  const hasError = membershipResource.status === 'error' || attendanceResource.status === 'error';
+  const refreshAll = () => {
+    membershipResource.refresh();
+    attendanceResource.refresh();
+    plansResource.refresh();
+  };
 
   // This-week activity: verified demo check-ins since Monday, over the days
   // elapsed in the week. Computed from the demo events, never asserted.
@@ -100,6 +147,12 @@ export default function MemberAttendanceScreen() {
     return { trained: days.size, elapsed };
   }, [calendarEvents]);
 
+  // Visit-list states: live mode reflects the hook status honestly; demo
+  // mode keeps its designed review control.
+  const visitsLoading = live ? attendanceResource.status === 'loading' : listState === 'loading';
+  const visitsError = live ? attendanceResource.status === 'error' : listState === 'error';
+  const visitsEmpty = live ? myEvents.length === 0 : myEvents.length === 0 || listState === 'empty';
+
   // Scroll-to plumbing for the shortcut tiles.
   const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const sectionY = useRef<Partial<Record<JumpKey, number>>>({});
@@ -116,20 +169,39 @@ export default function MemberAttendanceScreen() {
       <WorkspaceScreen
         title={`Hello, ${firstName}`}
         eyebrow="Your membership"
-        subtitle={`Member · ${me?.name ?? 'Demo member'} (demo)`}
-        demo
+        subtitle={live ? 'Member workspace · live membership' : `Member · ${me?.name ?? 'Demo member'} (demo)`}
+        demo={!live}
         actions={<SignOut />}
         footerPadding={24}
+        refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}
         onContentRef={(sv) => {
           scrollRef.current = sv;
         }}>
-        {/* My membership — from the demo member record */}
+        {hasError && (
+          <RiseIn>
+            <ErrorState
+              title="Your membership could not load"
+              message={
+                membershipResource.error ??
+                attendanceResource.error ??
+                'Your membership and visits are unavailable right now.'
+              }
+              onRetry={refreshAll}
+            />
+          </RiseIn>
+        )}
+        {live && membershipResource.status === 'loading' && !me ? (
+          <RiseIn style={{ marginBottom: spacing.sm }}>
+            <SkeletonRow count={2} />
+          </RiseIn>
+        ) : null}
+        {/* My membership — the member's own authorised record */}
         <RiseIn>
           <View
             onLayout={(e) => {
               sectionY.current.plan = e.nativeEvent.layout.y;
             }}
-            accessibilityLabel={`My membership: ${myPlan?.name ?? ''} plan, ${isActive ? 'active' : me?.status ?? ''}, valid till ${me?.membershipEnd ? formatDate(me.membershipEnd) : 'unknown'}. Demo data.`}
+            accessibilityLabel={`My membership: ${myPlan?.name ?? ''} plan, ${statusText}, valid till ${me?.membershipEnd ? formatDate(me.membershipEnd) : 'unknown'}.`}
             accessible>
             <WorkspaceCard>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -138,16 +210,14 @@ export default function MemberAttendanceScreen() {
                     <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
                       My Membership
                     </AppText>
-                    <OwnerStatusText
-                      label={isActive ? 'Active' : me?.status ?? 'Unknown'}
-                      tone={isActive ? 'up' : 'warning'}
-                    />
+                    <OwnerStatusText label={statusText} tone={statusTone} />
                   </View>
                   <AppText variant="figureSmall" style={{ color: colors.ownerInk }}>
                     {myPlan?.name ?? '—'} Plan
                   </AppText>
                   <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-                    Valid till {me?.membershipEnd ? formatDate(me.membershipEnd) : '—'} · demo data
+                    Valid till {me?.membershipEnd ? formatDate(me.membershipEnd) : '—'}
+                    {live ? '' : ' · demo data'}
                   </AppText>
                 </View>
                 <Ionicons name="barbell" size={30} color={colors.ownerAccentDeep} />
@@ -180,7 +250,7 @@ export default function MemberAttendanceScreen() {
         {/* This-week activity (computed from demo check-ins) */}
         <RiseIn index={2}>
           <View
-            accessibilityLabel={`This week: trained on ${weekStats.trained} of ${weekStats.elapsed} days. Demo data.`}
+            accessibilityLabel={`This week: trained on ${weekStats.trained} of ${weekStats.elapsed} days.${live ? '' : ' Demo data.'}`}
             accessible
             style={{ marginTop: spacing.sm }}>
             <WorkspaceCard>
@@ -201,7 +271,7 @@ export default function MemberAttendanceScreen() {
                 track={colors.ownerPanelMuted}
               />
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
-                Counted from your demo check-ins; the register confirms every session.
+                Counted from your check-ins; the register confirms every session.
               </AppText>
             </WorkspaceCard>
           </View>
@@ -309,7 +379,7 @@ export default function MemberAttendanceScreen() {
           </WorkspaceWell>
         </RiseIn>
 
-        {/* Training calendar (demo history + today's demo check-ins) */}
+        {/* Training calendar (own authorised check-ins) */}
         <RiseIn index={5}>
           <View
             onLayout={(e) => {
@@ -335,18 +405,18 @@ export default function MemberAttendanceScreen() {
             />
           }>
           {history &&
-            (listState === 'loading' ? (
+            (visitsLoading ? (
               <WorkspaceCard>
                 <SkeletonRow count={2} />
               </WorkspaceCard>
-            ) : listState === 'error' ? (
+            ) : visitsError ? (
               <ErrorState
                 title="Could not load your visits"
-                message="The register did not answer. Check the connection and try again."
-                onRetry={() => setListState('full')}
+                message={attendanceResource.error ?? 'The register did not answer. Check the connection and try again.'}
+                onRetry={live ? refreshAll : () => setListState('full')}
                 style={{ marginTop: spacing.sm }}
               />
-            ) : myEvents.length === 0 || listState === 'empty' ? (
+            ) : visitsEmpty ? (
               <OwnerEmptyState
                 icon="footsteps-outline"
                 title="No visits yet"
@@ -376,14 +446,14 @@ export default function MemberAttendanceScreen() {
                 </OwnerListGroup>
               </RiseIn>
             ))}
-          {!history && listState !== 'loading' && (
+          {!history && !visitsLoading && (
             <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
               History hidden. Check-ins per day are allowed more than once; each scan is its own register row.
             </AppText>
           )}
 
-          {/* List state review control (loading, empty, error are designed). */}
-          {!history && listState !== 'loading' && (
+          {/* List state review control (demo only: live status is real). */}
+          {!live && !history && !visitsLoading && (
             <View style={{ marginTop: spacing.sm }}>
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
                 Review control for the visit list:
@@ -404,8 +474,8 @@ export default function MemberAttendanceScreen() {
             </View>
           )}
 
-          {/* Empty state preview */}
-          {!history && (
+          {/* Empty state preview (demo only) */}
+          {!live && !history && (
             <WorkspaceCard style={{ marginTop: spacing.md }}>
               <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
                 No visits on the register yet? The member list opens with an empty state and one action: plan your first session.

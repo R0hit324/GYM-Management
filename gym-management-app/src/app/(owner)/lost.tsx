@@ -3,10 +3,10 @@
  *
  * Fino-style owner theme: dark charcoal ground, white rounded panel.
  * Expired and inactive memberships. Inactivity is 30 consecutive days
- * without a successful check-in (business rule, computed server-side in
- * production; the demo rows are labelled samples). Follow-up status is
- * tracked per member with the actor recorded.
- * All numbers are demo-labelled sample data; no backend exists in Part 1.
+ * without a successful check-in (business rule, computed server-side).
+ * Demo mode reads the approved demo records; live mode reads
+ * v_inactive_members, which supplies the server-computed inactivity days.
+ * Follow-up status is tracked per member with the actor recorded.
  */
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
@@ -32,8 +32,9 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoMembers } from '@/data/demo';
-import { formatDate, daysBetween } from '@/utils/format';
+import { useInactiveMembers, usePlans } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
+import { formatDate, daysBetween, memberDisplayId } from '@/utils/format';
 import type { Member } from '@/types/domain';
 
 const buckets = [
@@ -61,9 +62,14 @@ export default function LostMembersScreen() {
   const [selected, setSelected] = useState<Member | null>(null);
   const [logOpen, setLogOpen] = useState(false);
 
+  const inactiveResource = useInactiveMembers();
+  const plansResource = usePlans();
+  const inactiveMembers = inactiveResource.data;
+  const live = inactiveResource.isLive;
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return demoMembers
+    return inactiveMembers
       .filter((m) => {
         const end = m.membershipEnd ? daysBetween(m.membershipEnd) : null;
         const last = m.lastAttendance ? daysBetween(m.lastAttendance) : null;
@@ -76,7 +82,7 @@ export default function LostMembersScreen() {
       .filter((m) => m.followUp.status !== 'won' && m.followUp.status !== 'lost')
       .filter((m) => (onlyUntouched ? m.followUp.status === 'none' : true))
       .filter((m) => !q || m.name.toLowerCase().includes(q) || m.id.includes(q));
-  }, [query, bucket, onlyUntouched]);
+  }, [inactiveMembers, query, bucket, onlyUntouched]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -86,8 +92,18 @@ export default function LostMembersScreen() {
         title="Lost Members"
         eyebrow="Retention"
         subtitle="30 days without a visit, or expiry without a return"
-        demo
-        actions={<SignOut />}>
+        demo={!live}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={inactiveResource.status === 'loading'} onRefresh={inactiveResource.refresh} />}>
+        {inactiveResource.status === 'error' && (
+          <RiseIn style={{ marginTop: spacing.xs }}>
+            <ErrorState
+              title="Lost members could not load"
+              message={inactiveResource.error ?? 'The inactivity list is unavailable right now.'}
+              onRetry={inactiveResource.refresh}
+            />
+          </RiseIn>
+        )}
         <RiseIn style={{ marginTop: spacing.xs }}>
           <SearchBar label="Search lost members" value={query} onChange={setQuery} placeholder="Name or member ID" />
           <View style={{ marginTop: spacing.xs }}>
@@ -101,7 +117,11 @@ export default function LostMembersScreen() {
           </AppText>
         </RiseIn>
 
-        {rows.length === 0 ? (
+        {inactiveResource.status === 'loading' && inactiveMembers.length === 0 ? (
+          <RiseIn style={{ marginTop: spacing.sm }}>
+            <SkeletonRow count={4} />
+          </RiseIn>
+        ) : rows.length === 0 ? (
           <OwnerEmptyState
             icon="people-outline"
             title={query ? 'No one matches' : 'Nothing to follow up'}
@@ -126,7 +146,7 @@ export default function LostMembersScreen() {
                       <OwnerListRow
                         leading={<OwnerMemberAvatar name={m.name} />}
                         title={m.name}
-                        detail={`${last !== null ? `${last} day${Math.abs(last) === 1 ? '' : 's'} since a visit` : 'No visits recorded'} · ${end !== null && end < 0 ? `expired ${formatDate(m.membershipEnd as string)}` : `ends ${formatDate(m.membershipEnd as string)}`}`}
+                        detail={`${memberDisplayId(m.id)} · ${last !== null ? `${last} day${Math.abs(last) === 1 ? '' : 's'} since a visit` : 'No visits recorded'} · ${m.membershipEnd ? (end !== null && end < 0 ? `expired ${formatDate(m.membershipEnd)}` : `ends ${formatDate(m.membershipEnd)}`) : 'no end date recorded'}`}
                         status={
                           <OwnerStatusText
                             label={followUpLabels[m.followUp.status] ?? m.followUp.status}
@@ -158,13 +178,13 @@ export default function LostMembersScreen() {
           visible={!!selected}
           onClose={() => setSelected(null)}
           title={selected?.name ?? ''}
-          subtitle={selected ? selected.id.replace('m-', 'GB-') : undefined}
+          subtitle={selected ? memberDisplayId(selected.id) : undefined}
           toneBadge={selected ? <OwnerStatusText label={followUpLabels[selected.followUp.status] ?? 'Not contacted'} tone="neutral" /> : undefined}>
           {selected && (
             <View style={{ gap: spacing.xs }}>
               <LineJustified label="Membership end" value={selected.membershipEnd ? formatDate(selected.membershipEnd) : 'None'} />
               <LineJustified label="Last attendance" value={selected.lastAttendance ? formatDate(selected.lastAttendance) : 'None recorded'} />
-              <LineJustified label="Plan" value={selected.planId.replace('plan-', '')} />
+              <LineJustified label="Plan" value={plansResource.data.find((p) => p.id === selected.planId)?.name ?? (selected.planId ? 'Plan not in the current list' : 'Not recorded')} />
               <LineJustified label="Follow-up" value={followUpLabels[selected.followUp.status] ?? selected.followUp.status} />
               {selected.followUp.note && (
                 <AppText variant="caption" style={{ color: tokens.colors.ownerInkMuted }}>

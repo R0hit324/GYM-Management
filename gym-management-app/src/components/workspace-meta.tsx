@@ -10,6 +10,7 @@ import { IconButton } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { DemoBadge } from '@/components/ui/demo-badge';
 import { useTokens } from '@/hooks/use-tokens';
+import { useAuth } from '@/services/auth';
 
 export type WorkspaceRole = 'member' | 'reception' | 'owner';
 
@@ -31,12 +32,20 @@ export function WorkspaceMeta(props: { role: WorkspaceRole; demo?: boolean }) {
 }
 
 export function SignOut() {
+  const { session, previewRole, signOut, provider } = useAuth();
   return (
     <IconButton
       name="log-out-outline"
-      label="Leave the demo workspace"
+      label={previewRole ? 'Leave the demo preview' : 'Sign out'}
       tone="muted"
-      onPress={() => router.replace('/login')}
+      onPress={() => {
+        if (provider.mode === 'demo' && previewRole && !session) {
+          // Demo preview path: no session to revoke — just leave.
+          router.replace('/login' as never);
+          return;
+        }
+        void signOut(); // revokes the session, clears secure storage, routes to login
+      }}
     />
   );
 }

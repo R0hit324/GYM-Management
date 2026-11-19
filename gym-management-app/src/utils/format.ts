@@ -9,6 +9,18 @@ export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString('en-IN')}`;
 }
 
+/**
+ * The member's business display number (GB-XXXX) — the app-wide convention.
+ *
+ * Demo records already use `m-1042`; live records carry a UUID primary key,
+ * so the first eight characters are shown instead of the whole key. The
+ * returned value is presentation-only: routing always uses the real id.
+ */
+export function memberDisplayId(id: string): string {
+  if (/^[0-9a-f]{8}-/i.test(id)) return `GB-${id.slice(0, 8).toUpperCase()}`;
+  return id.replace(/^m-/, 'GB-').toUpperCase();
+}
+
 export function formatTime(iso: string): string {
   const d = new Date(iso);
   let h = d.getHours();

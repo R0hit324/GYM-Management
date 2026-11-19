@@ -41,10 +41,11 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoAttendance, demoPlans } from '@/data/demo';
 import { useSessionMembers } from '@/data/session';
+import { useAttendance, useMembers, usePlans } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { displayMembershipStatus } from '@/utils/membership';
-import { formatCurrency, formatTime, isSameLocalDay, pluralise } from '@/utils/format';
+import { formatCurrency, formatTime, isSameLocalDay, memberDisplayId, pluralise } from '@/utils/format';
 import type { MembershipStatus } from '@/types/domain';
 
 const filters = [
@@ -83,7 +84,23 @@ export default function ReceptionMembersScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
 
-  const members = useSessionMembers();
+  const membersResource = useMembers();
+  const attendanceResource = useAttendance();
+  const plansResource = usePlans();
+  const sessionMembers = useSessionMembers();
+  // Demo mode keeps the session store so contact edits staged elsewhere stay
+  // visible; live mode reads the member directory from v_member_status.
+  const members = membersResource.isLive ? membersResource.data : sessionMembers;
+  const plans = plansResource.data;
+  const liveLoading =
+    membersResource.status === 'loading' ||
+    attendanceResource.status === 'loading' ||
+    plansResource.status === 'loading';
+  const refreshAll = () => {
+    membersResource.refresh();
+    attendanceResource.refresh();
+    plansResource.refresh();
+  };
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterValue>('active');
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -96,7 +113,10 @@ export default function ReceptionMembersScreen() {
     return counts;
   }, [members]);
 
-  const todayEvents = useMemo(() => demoAttendance.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed'), []);
+  const todayEvents = useMemo(
+    () => attendanceResource.data.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed'),
+    [attendanceResource.data],
+  );
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -143,8 +163,28 @@ export default function ReceptionMembersScreen() {
         title="Members"
         eyebrow="Member directory"
         subtitle="Search, buckets and full profiles"
-        demo
-        actions={<SignOut />}>
+        demo={!membersResource.isLive}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}>
+        {membersResource.status === 'error' && (
+          <RiseIn>
+            <ErrorState
+              title="Members could not load"
+              message={membersResource.error ?? 'The member directory is unavailable right now.'}
+              onRetry={refreshAll}
+            />
+          </RiseIn>
+        )}
+        {attendanceResource.status === 'error' && (
+          <RiseIn>
+            <ErrorState
+              title="Today's attendance could not load"
+              message={attendanceResource.error ?? 'The attendance register is unavailable right now.'}
+              onRetry={refreshAll}
+              style={{ marginTop: spacing.sm }}
+            />
+          </RiseIn>
+        )}
         {/* Bucket KPIs — the date rule, not stored flags */}
         <RiseIn>
           <StatRow>
@@ -184,7 +224,11 @@ export default function ReceptionMembersScreen() {
         </RiseIn>
 
         {/* Member list — every row opens the full profile */}
-        {rows.length === 0 ? (
+        {membersResource.status === 'loading' && members.length === 0 ? (
+          <RiseIn index={3} style={{ marginTop: spacing.sm }}>
+            <SkeletonRow count={5} />
+          </RiseIn>
+        ) : rows.length === 0 ? (
           <RiseIn index={3} style={{ marginTop: spacing.sm }}>
             <OwnerEmptyState
               icon="search-outline"
@@ -199,7 +243,7 @@ export default function ReceptionMembersScreen() {
             <WorkspaceSection title={`${rows.length} ${rows.length === 1 ? 'member' : 'members'}`}>
               <OwnerListGroup label="Members">
                 {rows.map((m, i) => {
-                  const plan = demoPlans.find((p) => p.id === m.planId);
+                  const plan = plans.find((p) => p.id === m.planId);
                   const memberTodayEvents = todayEvents.filter((e) => e.memberId === m.id).length;
                   return (
                     <View key={m.id}>
@@ -207,7 +251,7 @@ export default function ReceptionMembersScreen() {
                       <OwnerListRow
                         leading={<OwnerMemberAvatar name={m.name} />}
                         title={m.name}
-                        detail={`${m.id.replace('m-', 'GB-').toUpperCase()} · ${m.phone}`}
+                        detail={`${memberDisplayId(m.id)} · ${m.phone}`}
                         status={<OwnerStatusText label={statusLabel[displayMembershipStatus(m)]} tone={statusTone[displayMembershipStatus(m)]} />}
                         chevron
                         onPress={() => router.push(`/(reception)/member-profile?id=${m.id}` as never)}
@@ -245,7 +289,9 @@ export default function ReceptionMembersScreen() {
                 tone="cyan"
               />
             </StatRow>
-            {todayEvents.length === 0 ? (
+            {attendanceResource.status === 'loading' && todayEvents.length === 0 ? (
+              <SkeletonRow count={2} />
+            ) : todayEvents.length === 0 ? (
               <OwnerEmptyState
                 icon="enter-outline"
                 title="No one has checked in yet today"
@@ -269,7 +315,7 @@ export default function ReceptionMembersScreen() {
                       <OwnerListRow
                         leading={<OwnerMemberAvatar name={a.member.name} />}
                         title={a.member.name}
-                        detail={`${a.member.id.replace('m-', 'GB-').toUpperCase()} · last in ${formatTime(last)}${a.events.length > 1 ? ` · ${a.events.length} visits` : ''}`}
+                        detail={`${memberDisplayId(a.member.id)} · last in ${formatTime(last)}${a.events.length > 1 ? ` · ${a.events.length} visits` : ''}`}
                         chevron
                         onPress={() => router.push(`/(reception)/member-profile?id=${a.member.id}` as never)}
                       />

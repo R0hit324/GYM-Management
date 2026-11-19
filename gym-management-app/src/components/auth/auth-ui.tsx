@@ -248,8 +248,7 @@ export function CategorySelector(props: {
 /** Error banner for auth forms; reuses the shared semantic danger tokens.
  *  Enters with the shared subtle rise (it mounts when the error appears),
  *  so the message settles in instead of popping — reduce-motion aware. */
-export function AuthErrorMessage({ message }: { message: string }) {
-  const tokens = useTokens();
+export function AuthErrorMessage({ message }: { message: string }) {  const tokens = useTokens();
   const { colors, spacing, radius } = tokens;
   return (
     <RiseIn>
@@ -335,5 +334,66 @@ export function AuthPlanCard(props: {
         </View>
       </View>
     </PressSurface>
+  );
+}
+
+/**
+ * Demo code well — the honesty surface for the demo provider. Because no
+ * SMS/email goes out, the one-time code is shown here, clearly labelled as
+ * a demo code. When `mode` becomes 'live' these wells disappear (the
+ * screens render them only when a challenge actually carries a demoCode).
+ */
+export function DemoCodeWell({ code, note }: { code: string; note?: string }) {
+  const tokens = useTokens();
+  const { colors, spacing, radius } = tokens;
+  return (
+    <View
+      accessibilityLabel={`Demo verification code ${code.split('').join(' ')}`}
+      style={{
+        marginTop: spacing.sm,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        backgroundColor: colors.infoBg,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: colors.rule,
+        padding: spacing.sm,
+      }}>
+      <Ionicons name="information-circle-outline" size={18} color={colors.info} />
+      <View style={{ flex: 1 }}>
+        <AppText variant="label" style={{ color: colors.infoOnBg, fontWeight: '600' }}>
+          Demo code: {code}
+        </AppText>
+        <AppText variant="caption" style={{ color: colors.infoOnBg, marginTop: 1 }}>
+          {note ?? 'Nothing is actually delivered while no server is connected.'}
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Auth-scope card shell: charcoal surface with a hairline border. Shared by
+ * every auth screen (login steps, MFA, verification, recovery, join) so the
+ * panel composition never drifts.
+ */
+export function AuthCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const tokens = useTokens();
+  const { colors, spacing, radius } = tokens;
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: colors.authSurface,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: colors.authRule,
+          padding: spacing.md,
+        },
+        style,
+      ]}>
+      {children}
+    </View>
   );
 }

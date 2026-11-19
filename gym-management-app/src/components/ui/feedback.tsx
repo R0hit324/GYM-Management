@@ -5,7 +5,7 @@
  * Motion: skeleton lines pulse quietly; empty/error states rise in with
  * the shared entrance; nothing loops forever except the loading pulse.
  */
-import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { RefreshControl, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
@@ -126,6 +126,19 @@ export function ErrorState(props: {
         )}
       </View>
     </RiseIn>
+  );
+}
+
+/** Pull-to-refresh control shared by screens reading live data. */
+export function DataRefreshControl(props: { refreshing: boolean; onRefresh: () => void }) {
+  const tokens = useTokens();
+  return (
+    <RefreshControl
+      refreshing={props.refreshing}
+      onRefresh={props.onRefresh}
+      tintColor={tokens.colors.ownerAccent}
+      colors={[tokens.colors.ownerAccent]}
+    />
   );
 }
 

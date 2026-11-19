@@ -9,11 +9,11 @@
  * alerts. A short recent-activity preview links to the full register;
  * operational tools live in the Members and More tabs.
  *
- * Every figure derives from the demo-labelled records (Part 1 has no
- * backend): attendance from demoAttendance, money from the payment
- * records. When the honest answer is ₹0 (no verified payment carries
- * today's date in the demo set) the screen says so — no number is ever
- * borrowed from the owner report's sample ledger.
+ * Every figure derives from the records the current session is authorised
+ * to read: the demo-labelled set in demo mode, or the live views/tables
+ * (v_daily_report, attendance_events, v_member_status, payments) in live
+ * mode. When the honest answer is ₹0 the screen says so — no number is
+ * ever borrowed from the owner report's sample ledger.
  */
 import { useMemo } from 'react';
 import { View } from 'react-native';
@@ -44,8 +44,9 @@ import { PressSurface } from '@/components/ui/press-surface';
 import { AnimatedIcon } from '@/components/ui/animated-icon';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoAttendance, demoMembers } from '@/data/demo';
 import { useSessionPayments } from '@/data/session';
+import { useAttendance, useDailyReport, useMembers, usePayments } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { displayMembershipStatus, EXPIRING_SOON_DAYS } from '@/utils/membership';
 import { formatCurrency, formatTime, isSameLocalDay, pluralise } from '@/utils/format';
 
@@ -59,11 +60,38 @@ export default function ReceptionHomeScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
 
-  const records = useSessionPayments();
+  const dailyResource = useDailyReport();
+  const attendanceResource = useAttendance();
+  const membersResource = useMembers();
+  const paymentsResource = usePayments();
+  const sessionPayments = useSessionPayments();
+  const live = dailyResource.isLive;
+  // Demo mode keeps the session store so a desk-recorded entry still appears
+  // here; live mode reads authorised payment rows from the backend.
+  const records = live ? paymentsResource.data : sessionPayments;
+  const attendance = attendanceResource.data;
+  const members = membersResource.data;
+  const daily = dailyResource.data;
+  const liveLoading =
+    dailyResource.status === 'loading' ||
+    attendanceResource.status === 'loading' ||
+    membersResource.status === 'loading' ||
+    paymentsResource.status === 'loading';
+  const hasError =
+    dailyResource.status === 'error' ||
+    attendanceResource.status === 'error' ||
+    membersResource.status === 'error' ||
+    paymentsResource.status === 'error';
+  const refreshAll = () => {
+    dailyResource.refresh();
+    attendanceResource.refresh();
+    membersResource.refresh();
+    paymentsResource.refresh();
+  };
 
   // ---- Today's metrics, all derived from the real records ----
   const metrics = useMemo(() => {
-    const todayEvents = demoAttendance.filter((e) => e.status !== 'failed' && isSameLocalDay(e.checkedInAt));
+    const todayEvents = attendance.filter((e) => e.status !== 'failed' && isSameLocalDay(e.checkedInAt));
     const visitors = new Set(todayEvents.map((e) => e.memberId)).size;
 
     const todayRecords = records.filter((p) => isSameLocalDay(p.createdAt));
@@ -76,18 +104,18 @@ export default function ReceptionHomeScreen() {
 
     let newRegistrations = 0;
     let expiring = 0;
-    for (const m of demoMembers) {
+    for (const m of members) {
       if (isSameLocalDay(m.joinedOn)) newRegistrations++;
       if (displayMembershipStatus(m) === 'expiring') expiring++;
     }
     // Renewals = today's payment records whose member had already joined
     // before that day; a payment on the join day itself is a registration.
     const renewals = todayRecords.filter((p) => {
-      const m = demoMembers.find((dm) => dm.id === p.memberId);
+      const m = members.find((dm) => dm.id === p.memberId);
       return m ? !isSameLocalDay(m.joinedOn, new Date(p.createdAt)) : false;
     }).length;
 
-    return {
+    const computed = {
       checkIns: todayEvents.length,
       visitors,
       verifiedCash,
@@ -100,13 +128,26 @@ export default function ReceptionHomeScreen() {
       renewals,
       expiring,
     };
-  }, [records]);
+
+    // The verified daily view is the authoritative day count in live mode.
+    if (live && daily) {
+      return {
+        ...computed,
+        checkIns: daily.attendance,
+        visitors: daily.uniqueVisitors,
+        verifiedTotal: daily.verifiedCollections,
+        newRegistrations: daily.newMembers,
+        renewals: daily.renewals,
+      };
+    }
+    return computed;
+  }, [records, attendance, members, daily, live]);
 
   // Recent activity preview: today's check-in rows, newest last kept in
   // record order — a short window, never the full register.
   const recent = useMemo(
-    () => demoAttendance.filter((e) => e.status !== 'failed' && isSameLocalDay(e.checkedInAt)).slice(0, 5),
-    [],
+    () => attendance.filter((e) => e.status !== 'failed' && isSameLocalDay(e.checkedInAt)).slice(0, 5),
+    [attendance],
   );
 
   const quickActions = [
@@ -137,8 +178,30 @@ export default function ReceptionHomeScreen() {
         title="Front desk"
         eyebrow="Reception desk"
         subtitle="Today at a glance"
-        demo
-        actions={<SignOut />}>
+        demo={!live}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}>
+        {hasError && (
+          <RiseIn>
+            <ErrorState
+              title="Today's desk data could not load"
+              message={
+                dailyResource.error ??
+                attendanceResource.error ??
+                membersResource.error ??
+                paymentsResource.error ??
+                'The desk overview is unavailable right now.'
+              }
+              onRetry={refreshAll}
+              style={{ marginBottom: spacing.sm }}
+            />
+          </RiseIn>
+        )}
+        {live && liveLoading && members.length === 0 && attendance.length === 0 ? (
+          <RiseIn style={{ marginBottom: spacing.md }}>
+            <SkeletonRow count={4} />
+          </RiseIn>
+        ) : null}
         {/* 1 — Attendance summary */}
         <RiseIn>
           <StatRow>

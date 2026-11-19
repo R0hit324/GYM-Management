@@ -7,11 +7,12 @@
  * days, per-date records (time, door, status; multiple events listed),
  * and a monthly summary (attendance days, attendance events, first and
  * last attendance). Check-out times do not exist in the records, so none
- * are shown; every figure derives from the demo-labelled records and
+ * are shown; every figure derives from the rows the session may read and
  * nothing is invented.
  *
- * Data sources: demoAttendance plus the member's generated history
- * (demoMemberHistory). Members other than the demo-history member show
+ * Data sources: demo mode keeps demoAttendance plus the generated
+ * demoMemberHistory; live mode reads the authorised attendance_events and
+ * v_member_status rows. Members other than the demo-history member show
  * only the records that actually exist, with honest empty states.
  *
  * The screen keeps the full today's register (search and status filters
@@ -46,7 +47,9 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoAttendance, demoMemberHistory, demoMembers } from '@/data/demo';
+import { demoAttendance, demoMemberHistory } from '@/data/demo';
+import { useAttendance, useMembers } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import {
   addMonth,
   dayKey,
@@ -57,7 +60,7 @@ import {
   type MonthPosition,
 } from '@/utils/calendar';
 import { displayMembershipStatus } from '@/utils/membership';
-import { formatDate, formatTime, isSameLocalDay, pluralise } from '@/utils/format';
+import { formatDate, formatTime, isSameLocalDay, memberDisplayId, pluralise } from '@/utils/format';
 import type { AttendanceEvent, MembershipStatus } from '@/types/domain';
 
 const statusTone: Record<MembershipStatus, 'up' | 'down' | 'neutral' | 'warning' | 'action'> = {
@@ -128,26 +131,39 @@ export default function AttendanceRegisterScreen() {
   );
   const selected = selectedKey ?? todayKey;
 
-  const member = useMemo(() => demoMembers.find((m) => m.id === memberId) ?? null, [memberId]);
+  const membersResource = useMembers();
+  const attendanceResource = useAttendance();
+  const live = membersResource.isLive;
+  const members = membersResource.data;
+  const records = attendanceResource.data;
+  const liveLoading = membersResource.status === 'loading' || attendanceResource.status === 'loading';
+  const hasError = membersResource.status === 'error' || attendanceResource.status === 'error';
+  const refreshAll = () => {
+    membersResource.refresh();
+    attendanceResource.refresh();
+  };
 
-  // The member's actual records: the demo register plus their generated
-  // history — the only data sources (no invented records).
-  const events = useMemo(
-    () => (member ? [...demoAttendance, ...demoMemberHistory].filter((e) => e.memberId === member.id) : []),
-    [member],
-  );
+  const member = useMemo(() => members.find((m) => m.id === memberId) ?? null, [members, memberId]);
+
+  // The member's actual records: in live mode the authorised attendance rows;
+  // in demo mode the demo register plus their generated history.
+  const events = useMemo(() => {
+    if (!member) return [];
+    if (live) return records.filter((e) => e.memberId === member.id);
+    return [...demoAttendance, ...demoMemberHistory].filter((e) => e.memberId === member.id);
+  }, [live, member, records]);
 
   const memberResults = useMemo(() => {
     const q = memberQuery.trim().toLowerCase();
     const digits = q.replace(/\D/g, '');
     if (!q) return [];
-    return demoMembers.filter(
+    return members.filter(
       (m) =>
         m.name.toLowerCase().includes(q) ||
         m.phone.replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, '')) ||
         (digits.length > 0 && (m.id.includes(digits) || m.phone.replace(/\D/g, '').includes(digits))),
     );
-  }, [memberQuery]);
+  }, [members, memberQuery]);
 
   const monthEvents = useMemo(() => eventsByDay(events, pos.year, pos.month), [events, pos]);
   const counts = useMemo(() => {
@@ -182,17 +198,17 @@ export default function AttendanceRegisterScreen() {
 
   const todayRows = useMemo(() => {
     const q = todayQuery.trim().toLowerCase();
-    return demoAttendance
+    return records
       .filter((e) => isSameLocalDay(e.checkedInAt))
       .filter((e) => {
         const matchesQuery = !q || e.memberName.toLowerCase().includes(q) || e.memberIdDisplay.toLowerCase().includes(q);
         const matchesFilter = todayFilter === 'all' || e.status === todayFilter;
         return matchesQuery && matchesFilter;
       });
-  }, [todayQuery, todayFilter]);
+  }, [records, todayQuery, todayFilter]);
 
-  const todayCount = demoAttendance.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed').length;
-  const todayUnique = new Set(demoAttendance.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed').map((e) => e.memberId)).size;
+  const todayCount = records.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed').length;
+  const todayUnique = new Set(records.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed').map((e) => e.memberId)).size;
 
   return (
     <View style={{ flex: 1 }}>
@@ -200,8 +216,27 @@ export default function AttendanceRegisterScreen() {
         title="Attendance Register"
         eyebrow="Attendance"
         subtitle="Any member, any month"
-        demo
-        actions={<SignOut />}>
+        demo={!live}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}>
+        {hasError && (
+          <RiseIn>
+            <ErrorState
+              title="Attendance could not load"
+              message={
+                attendanceResource.error ??
+                membersResource.error ??
+                'The attendance register is unavailable right now.'
+              }
+              onRetry={refreshAll}
+            />
+          </RiseIn>
+        )}
+        {live && attendanceResource.status === 'loading' && records.length === 0 ? (
+          <RiseIn style={{ marginBottom: spacing.sm }}>
+            <SkeletonRow count={4} />
+          </RiseIn>
+        ) : null}
         <RiseIn>
           <StatRow>
             <OwnerStatTile
@@ -245,7 +280,7 @@ export default function AttendanceRegisterScreen() {
                       {member.name}
                     </AppText>
                     <AppText variant="caption" numberOfLines={1} style={{ color: colors.ownerInkMuted }}>
-                      {member.id.replace('m-', 'GB-').toUpperCase()} · {statusLabel[displayMembershipStatus(member)]}
+                      {memberDisplayId(member.id)} · {statusLabel[displayMembershipStatus(member)]}
                       {member.status !== 'frozen' && member.status !== 'pendingPayment'
                         ? ` · ends ${formatDate(member.membershipEnd ?? member.joinedOn)}`
                         : ''}
@@ -281,7 +316,7 @@ export default function AttendanceRegisterScreen() {
                           <OwnerListRow
                             leading={<OwnerMemberAvatar name={m.name} />}
                             title={m.name}
-                            detail={`${m.id.replace('m-', 'GB-').toUpperCase()} · ${m.phone}`}
+                            detail={`${memberDisplayId(m.id)} · ${m.phone}`}
                             status={
                               <OwnerStatusText
                                 label={statusLabel[displayMembershipStatus(m)]}

@@ -12,8 +12,11 @@
 import { Stack } from 'expo-router';
 
 import { Colors } from '@/constants/theme';
+import { useWorkspaceGuard } from '@/services/auth';
 
 export default function OwnerLayout() {
+  // RBAC: only an owner session may render these routes.
+  useWorkspaceGuard('owner');
   return (
     <Stack
       screenOptions={{

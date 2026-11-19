@@ -20,7 +20,7 @@
  */
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { Children, type ReactNode, useContext } from 'react';
+import { Children, type ReactElement, type ReactNode, useContext } from 'react';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -419,6 +419,8 @@ export function OwnerScreen(props: {
   children: ReactNode;
   demo?: boolean;
   actions?: ReactNode;
+  /** Optional pull-to-refresh control (added for live read-only data). */
+  refreshControl?: ReactElement;
 }) {
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
@@ -427,6 +429,7 @@ export function OwnerScreen(props: {
   return (
     <View style={{ flex: 1, backgroundColor: colors.ownerBg, paddingTop: insets.top }}>
       <ScrollView
+        refreshControl={props.refreshControl}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 118 }}
         keyboardShouldPersistTaps="handled">
         {/* Page header on the dark ground: eyebrow (optional), large

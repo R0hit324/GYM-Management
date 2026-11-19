@@ -3,16 +3,17 @@
  *
  * Charcoal ground; header with greeting, gym name and a bell whose dot
  * reflects real open attention items; hero Total Revenue (verified-only,
- * real WoW comparison from the collections trend); five compact attendance
- * cards from the recorded week (the most recent recorded day carries the
- * restrained pastel gradient — nothing pretends to be "today"); and the
- * white rounded "Needs your attention" panel whose items come only from
- * real demo-data sources and link only to modules that exist.
+ * with a month-over-month comparison when the previous month has data);
+ * five compact attendance cards from the recorded week (the most recent
+ * recorded day carries the restrained pastel gradient); and the white
+ * rounded "Needs your attention" panel whose items come only from real
+ * sources and link only to modules that exist.
  *
- * Part 1 honesty: all numbers are demo-labelled sample data; there is no
- * backend, so no notification system, no overdue-fee source and no owner
- * application-review screen exist — those are omitted or plainly labelled
- * rather than fabricated.
+ * Demo mode reads the approved sample data and labels it; live mode reads
+ * the authorised views/tables (v_month_revenue, payments, v_member_status,
+ * v_inactive_members, join_applications, attendance_events). No
+ * notification system or application-review screen exists — those are
+ * omitted or plainly labelled rather than fabricated.
  */
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -38,14 +39,20 @@ import {
   type AttentionItem,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
+import { demoAttendanceTrend } from '@/data/demo';
 import {
-  demoOwnershipReport,
-  demoAttendanceTrend,
-  demoCollectionsTrend,
-  demoMembers,
-  demoPayments,
-} from '@/data/demo';
-import { formatCurrency, daysBetween } from '@/utils/format';
+  useAttendance,
+  useDailyReport,
+  useInactiveMembers,
+  useMembers,
+  useMonthlyRevenue,
+  usePayments,
+  usePendingApplications,
+} from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
+import { displayMembershipStatus } from '@/utils/membership';
+import { formatCurrency, formatDate, daysBetween } from '@/utils/format';
+import type { TrendPoint } from '@/types/domain';
 
 export default function OwnerDashboardScreen() {
   const tokens = useTokens();
@@ -54,26 +61,79 @@ export default function OwnerDashboardScreen() {
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  // -- Real (demo-labelled) sources — reused, not duplicated ---------------
-  const monthRevenue = demoCollectionsTrend.reduce((s, p) => s + p.value, 0);
-  const revenueDelta = deltaPct(
-    demoCollectionsTrend[demoCollectionsTrend.length - 1]?.value ?? 0,
-    demoCollectionsTrend[demoCollectionsTrend.length - 2]?.value ?? 0,
-  );
-  const verificationQueue = demoPayments.filter((p) => p.state === 'awaitingVerification');
+  // -- Authorised sources — demo fallbacks or live reads -------------------
+  const monthlyResource = useMonthlyRevenue();
+  const paymentsResource = usePayments();
+  const membersResource = useMembers();
+  const inactiveResource = useInactiveMembers();
+  const attendanceResource = useAttendance();
+  const dailyResource = useDailyReport();
+  const applicationsResource = usePendingApplications();
+  const live = monthlyResource.isLive;
+
+  const monthly = monthlyResource.data;
+  const monthRevenue = monthly?.current.net ?? 0;
+  const revenueDelta = monthly?.previous ? deltaPct(monthly.current.net, monthly.previous.net) : undefined;
+  const verificationQueue = paymentsResource.data.filter((p) => p.state === 'awaitingVerification');
   const queuedAmount = verificationQueue.reduce((s, p) => s + p.payable, 0);
-  const expiring = demoMembers.filter((m) => m.status === 'expiring');
-  const lostMembers = demoMembers.filter((m) => {
-    const end = m.membershipEnd ? daysBetween(m.membershipEnd) : null;
+  const expiring = membersResource.data.filter((m) => displayMembershipStatus(m) === 'expiring');
+  // v_inactive_members returns every member with its inactivity metrics, so
+  // the owner overview applies the same 30-day/expiry rule the lost screen
+  // uses instead of treating the whole view as a lost list.
+  const lostMembers = inactiveResource.data.filter((m) => {
+    if (m.followUp.status === 'won' || m.followUp.status === 'lost') return false;
     const last = m.lastAttendance ? daysBetween(m.lastAttendance) : null;
-    const inactive = last === null || last >= 30;
-    const expired = end !== null && end < 0;
-    return (inactive || expired) && m.followUp.status !== 'won' && m.followUp.status !== 'lost';
+    const end = m.membershipEnd ? daysBetween(m.membershipEnd) : null;
+    return last === null || last >= 30 || (end !== null && end < 0);
   });
   const notContacted = lostMembers.filter((m) => m.followUp.status === 'none').length;
+  const pendingApplications = applicationsResource.data;
 
-  // Last five recorded days of the week's trend.
-  const weekPoints = useMemo(() => demoAttendanceTrend.slice(-5), []);
+  const liveLoading =
+    monthlyResource.status === 'loading' ||
+    paymentsResource.status === 'loading' ||
+    membersResource.status === 'loading' ||
+    inactiveResource.status === 'loading' ||
+    attendanceResource.status === 'loading' ||
+    dailyResource.status === 'loading' ||
+    applicationsResource.status === 'loading';
+  const hasError =
+    monthlyResource.status === 'error' ||
+    paymentsResource.status === 'error' ||
+    membersResource.status === 'error' ||
+    inactiveResource.status === 'error' ||
+    attendanceResource.status === 'error' ||
+    dailyResource.status === 'error' ||
+    applicationsResource.status === 'error';
+  const refreshAll = () => {
+    monthlyResource.refresh();
+    paymentsResource.refresh();
+    membersResource.refresh();
+    inactiveResource.refresh();
+    attendanceResource.refresh();
+    dailyResource.refresh();
+    applicationsResource.refresh();
+  };
+
+  // Last five recorded days: the approved demo trend in demo mode, or the
+  // distinct days present in the authorised attendance rows in live mode.
+  const weekPoints = useMemo<TrendPoint[]>(() => {
+    if (!live) return demoAttendanceTrend.slice(-5);
+    const byDay = new Map<string, number>();
+    for (const e of attendanceResource.data) {
+      if (e.status === 'failed') continue;
+      const d = new Date(e.checkedInAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      byDay.set(key, (byDay.get(key) ?? 0) + 1);
+    }
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-5)
+      .map(([key, value]) => {
+        const d = new Date(`${key}T12:00:00`);
+        return { label: d.toLocaleDateString('en-IN', { weekday: 'short' }), fullLabel: formatDate(d), value };
+      });
+  }, [live, attendanceResource.data]);
 
   const attentionItems: AttentionItem[] = [
     {
@@ -101,7 +161,7 @@ export default function OwnerDashboardScreen() {
       icon: 'person-add-outline',
       tint: '#F5F5F7',
       title: 'Registration requests',
-      statusLabel: `${demoOwnershipReport.pendingApplications}`,
+      statusLabel: `${pendingApplications}`,
       description: 'Member applications completed online are waiting for review.',
     },
     {
@@ -131,6 +191,7 @@ export default function OwnerDashboardScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 118 }}
+        refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}
         keyboardShouldPersistTaps="handled">
         {/* Dark upper zone: page title, header, hero, week strip — staggered entrance */}
         <View style={{ paddingHorizontal: spacing.lg }}>
@@ -152,15 +213,38 @@ export default function OwnerDashboardScreen() {
                   }}
                 />
                 <AppText variant="caption" style={{ color: colors.ownerHeroMuted }}>
-                  Pulse Gym · owner console · demo data
+                  {live ? 'Pulse Gym · owner console · live data' : 'Pulse Gym · owner console · demo data'}
                 </AppText>
               </View>
-              <DemoBadge small label="Demo data" />
+              {!live && <DemoBadge small label="Demo data" />}
             </View>
           </RiseIn>
           <RiseIn index={1}>
             <OwnerHeader attentionCount={attentionCount} onPressBell={() => setNotificationsOpen(true)} />
           </RiseIn>
+
+          {hasError && (
+            <RiseIn index={1}>
+              <ErrorState
+                title="Some owner data could not load"
+                message={
+                  monthlyResource.error ??
+                  paymentsResource.error ??
+                  membersResource.error ??
+                  inactiveResource.error ??
+                  attendanceResource.error ??
+                  'The owner overview is partially unavailable right now.'
+                }
+                onRetry={refreshAll}
+                style={{ marginBottom: spacing.md }}
+              />
+            </RiseIn>
+          )}
+          {live && liveLoading && !monthly ? (
+            <RiseIn index={1}>
+              <SkeletonRow count={3} style={{ marginBottom: spacing.md }} />
+            </RiseIn>
+          ) : null}
 
           <RiseIn index={2}>
             <PrimaryMetricCard
@@ -169,7 +253,11 @@ export default function OwnerDashboardScreen() {
               countValue={monthRevenue}
               deltaPct={revenueDelta}
               deltaUnit="WoW"
-              supporting={`Sample ledger: ${formatCurrency(demoOwnershipReport.verifiedCollections)} for the day · ${formatCurrency(queuedAmount)} in the verification queue`}
+              supporting={
+                live
+                  ? `Today: ${formatCurrency(dailyResource.data?.verifiedCollections ?? 0)} verified · ${formatCurrency(queuedAmount)} in the verification queue`
+                  : `Sample ledger: ${formatCurrency(dailyResource.data?.verifiedCollections ?? 0)} for the day · ${formatCurrency(queuedAmount)} in the verification queue`
+              }
             />
           </RiseIn>
 
@@ -229,7 +317,9 @@ export default function OwnerDashboardScreen() {
             ))
           )}
           <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.md }}>
-            Overdue-fee alerts arrive with the payments backend (Parts 2-3). Nothing here is invented.
+            {live
+              ? 'Overdue-fee tracking is not part of the current read-only views; nothing here is invented.'
+              : 'Overdue-fee alerts arrive with the payments backend (Parts 2-3). Nothing here is invented.'}
           </AppText>
             </AttentionPanel>
           </ButtonSurfaceContext.Provider>
@@ -243,7 +333,7 @@ export default function OwnerDashboardScreen() {
         visible={notificationsOpen}
         onClose={() => setNotificationsOpen(false)}
         title="Notifications"
-        subtitle="Open attention items from your gym data (demo)">
+        subtitle={live ? 'Open attention items from your gym data' : 'Open attention items from your gym data (demo)'}>
         {allClear ? (
           <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
             Nothing open right now. The bell lights up when an item needs you.

@@ -20,7 +20,7 @@
  * only, and every number keeps its real value (CountUp settles exactly).
  */
 import { ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
-import { useContext, useEffect, type ComponentRef, type ReactNode } from 'react';
+import { useContext, useEffect, type ComponentRef, type ReactElement, type ReactNode } from 'react';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -67,6 +67,8 @@ export function WorkspaceScreen(props: {
    * tiles scroll to sections). A callback ref keeps ref access out of
    * render, which the React compiler requires. */
   onContentRef?: (sv: ComponentRef<typeof ScrollView> | null) => void;
+  /** Optional pull-to-refresh control (added for live read-only data). */
+  refreshControl?: ReactElement;
 }) {
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
@@ -80,6 +82,7 @@ export function WorkspaceScreen(props: {
     <View style={{ flex: 1, backgroundColor: colors.ownerBg, paddingTop: insets.top }}>
       <ScrollView
         ref={(sv) => props.onContentRef?.(sv)}
+        refreshControl={props.refreshControl}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: props.footerPadding ?? 118 }}
         keyboardShouldPersistTaps="handled">
         {/* Page header on the dark ground: eyebrow (optional), large

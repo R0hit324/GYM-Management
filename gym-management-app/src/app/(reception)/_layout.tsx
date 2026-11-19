@@ -8,8 +8,12 @@
 import { Stack } from 'expo-router';
 
 import { Colors } from '@/constants/theme';
+import { useWorkspaceGuard } from '@/services/auth';
 
 export default function ReceptionLayout() {
+  // RBAC: only a receptionist session (or an explicitly-labelled demo
+  // preview) may render these routes; anything else goes back to login.
+  useWorkspaceGuard('receptionist');
   return (
     <Stack
       screenOptions={{

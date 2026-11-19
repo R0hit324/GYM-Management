@@ -8,8 +8,11 @@
 import { Stack } from 'expo-router';
 
 import { Colors } from '@/constants/theme';
+import { useWorkspaceGuard } from '@/services/auth';
 
 export default function MemberLayout() {
+  // RBAC: only a member session may render these routes.
+  useWorkspaceGuard('member');
   return (
     <Stack
       screenOptions={{

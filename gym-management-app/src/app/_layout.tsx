@@ -24,6 +24,7 @@ import {
 } from '@expo-google-fonts/barlow-condensed';
 
 import { Colors } from '@/constants/theme';
+import { AuthProviderBoundary } from '@/services/auth';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -70,22 +71,25 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={navigationTheme}>
       <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: Colors.paper },
-          // Vanguard motion: workspaces crossfade instead of the stock push.
-          // (Expo Router SDK 58's Stack does not expose custom transition
-          // timing on Android, so the platform-native timing is kept.)
-          animation: 'fade',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(member)" />
-        <Stack.Screen name="(reception)" />
-        <Stack.Screen name="(owner)" />
-      </Stack>
+      {/* Auth boundary: restores the secure session before anything renders. */}
+      <AuthProviderBoundary>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: Colors.paper },
+            // Vanguard motion: workspaces crossfade instead of the stock push.
+            // (Expo Router SDK 58's Stack does not expose custom transition
+            // timing on Android, so the platform-native timing is kept.)
+            animation: 'fade',
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(member)" />
+          <Stack.Screen name="(reception)" />
+          <Stack.Screen name="(owner)" />
+        </Stack>
+      </AuthProviderBoundary>
     </ThemeProvider>
   );
 }

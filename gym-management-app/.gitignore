@@ -33,8 +33,10 @@ yarn-error.*
 # Hallmark skill local artifacts
 .hallmark/
 
-# local env files
-.env*.local
+# local env files — never commit credentials
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo

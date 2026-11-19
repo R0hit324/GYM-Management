@@ -38,8 +38,10 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoMembers } from '@/data/demo';
-import { formatDate, daysBetween } from '@/utils/format';
+import { useSessionMembers } from '@/data/session';
+import { useMembers } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
+import { formatDate, daysBetween, memberDisplayId } from '@/utils/format';
 import type { Member } from '@/types/domain';
 
 const filters = [
@@ -64,24 +66,29 @@ export default function RenewalsScreen() {
   const [selected, setSelected] = useState<Member | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
 
-  // Bucket counts for the KPI row — computed from the demo member records,
+  const membersResource = useMembers();
+  const sessionMembers = useSessionMembers();
+  // Demo mode keeps the session store so contact edits remain visible.
+  const members = membersResource.isLive ? membersResource.data : sessionMembers;
+
+  // Bucket counts for the KPI row — computed from the member records,
   // same rules as the list filters below. Never asserted.
   const buckets = useMemo(() => {
     let expiring = 0;
     let expired = 0;
     let frozen = 0;
-    for (const m of demoMembers) {
+    for (const m of members) {
       if (m.status === 'frozen') frozen++;
       const end = m.membershipEnd ? daysBetween(m.membershipEnd) : null;
       if (end !== null && end >= 0 && end <= 7) expiring++;
       else if (end !== null && end < 0) expired++;
     }
     return { expiring, expired, frozen };
-  }, []);
+  }, [members]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return demoMembers
+    return members
       .filter((m) => {
         if (filter === 'all') return true;
         if (filter === 'frozen') return m.status === 'frozen';
@@ -91,7 +98,7 @@ export default function RenewalsScreen() {
         return end !== null && end < 0;
       })
       .filter((m) => !q || m.name.toLowerCase().includes(q) || m.id.includes(q));
-  }, [query, filter]);
+  }, [members, query, filter]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -99,9 +106,24 @@ export default function RenewalsScreen() {
         title="Renewals"
         eyebrow="Memberships"
         subtitle="Who is running out, and who is already out"
-        demo
-        actions={<SignOut />}>
-        {/* KPI row: bucket sizes, computed from the demo records (audit #7) */}
+        demo={!membersResource.isLive}
+        actions={<SignOut />}
+        refreshControl={
+          <DataRefreshControl
+            refreshing={membersResource.status === 'loading'}
+            onRefresh={membersResource.refresh}
+          />
+        }>
+        {membersResource.status === 'error' && (
+          <RiseIn>
+            <ErrorState
+              title="Renewals could not load"
+              message={membersResource.error ?? 'The membership register is unavailable right now.'}
+              onRetry={membersResource.refresh}
+            />
+          </RiseIn>
+        )}
+        {/* KPI row: bucket sizes, computed from the member records (audit #7) */}
         <RiseIn>
           <StatRow>
             <OwnerStatTile label="Expiring in 7 days" value={String(buckets.expiring)} count={buckets.expiring} tone="amber" icon="time-outline" />
@@ -117,7 +139,11 @@ export default function RenewalsScreen() {
           </View>
         </RiseIn>
 
-        {rows.length === 0 ? (
+        {membersResource.status === 'loading' && members.length === 0 ? (
+          <RiseIn style={{ marginTop: spacing.sm }}>
+            <SkeletonRow count={4} />
+          </RiseIn>
+        ) : rows.length === 0 ? (
           <OwnerEmptyState
             icon="calendar-clear-outline"
             title={query ? 'No one matches' : 'Nothing in this bucket'}
@@ -148,9 +174,9 @@ export default function RenewalsScreen() {
                         detail={
                           m.membershipEnd
                             ? expired
-                              ? `Expired ${formatDate(m.membershipEnd)} · ${m.id.replace('m-', 'GB-')}`
-                              : `Ends ${formatDate(m.membershipEnd)} · ${end} day${end === 1 ? '' : 's'} left · ${m.id.replace('m-', 'GB-')}`
-                            : `No active validity · ${m.id.replace('m-', 'GB-')}`
+                              ? `Expired ${formatDate(m.membershipEnd)} · ${memberDisplayId(m.id)}`
+                              : `Ends ${formatDate(m.membershipEnd)} · ${end} day${end === 1 ? '' : 's'} left · ${memberDisplayId(m.id)}`
+                            : `No active validity · ${memberDisplayId(m.id)}`
                         }
                         status={
                           <OwnerStatusText
@@ -189,7 +215,7 @@ export default function RenewalsScreen() {
               />
             </View>
             <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
-              The list is the demo member records with live search and bucket filters — there is no server request to reload, so there is no reload control.
+              The list refreshes from the membership register; search and bucket filters apply locally. Pull down to reload the latest rows.
             </AppText>
           </WorkspaceSection>
         </RiseIn>
@@ -199,7 +225,7 @@ export default function RenewalsScreen() {
           visible={!!selected}
           onClose={() => setSelected(null)}
           title={selected?.name ?? ''}
-          subtitle={selected ? selected.id.replace('m-', 'GB-') : undefined}
+          subtitle={selected ? memberDisplayId(selected.id) : undefined}
           toneBadge={
             selected ? (
               <StatusBadge

@@ -1,0 +1,13 @@
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# app env policy (matches gym-management-app/.gitignore)
+.env
+.env.*
+!.env.example

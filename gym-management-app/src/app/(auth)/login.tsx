@@ -1,15 +1,18 @@
 /**
  * Screen 1 — Login (shared, three role choices).
  *
- * Security position (enforced in Part 2, but stated here): the role chosen
- * on this screen is a UI expectation only. Authorisation is verified by the
- * backend against the authenticated session; a member account selecting
- * Owner never receives owner permissions. Owner and Receptionist accounts
- * are created by the Owner, never through public registration.
+ * Security stance (Part 2 implementation): the role chosen on this screen
+ * is a UI expectation only. The auth provider validates the password AND
+ * the account's immutable role — a member account selecting Owner fails
+ * sign-in with one coarse message. Staff then pass an MFA check; members
+ * may be asked to verify email/phone before the session is issued. The
+ * session role — never this selection — unlocks a workspace (RBAC guards).
  *
- * Part 1 restriction: no backend is connected. This screen validates
- * locally, never claims a successful sign-in, and offers an explicit demo
- * preview of the workspaces instead.
+ * Provider status: the demo auth provider (mode 'demo') implements the
+ * full contract in-memory. Nothing is delivered (no SMS/email) — codes are
+ * surfaced in labelled DemoCodeWells, and the preview path stays available
+ * and clearly labelled. Swap the provider for the live backend when it
+ * lands; this screen's flow does not change.
  *
  * Visual direction: pixel-referenced to the supplied Travel-App screenshot —
  * light dotted upper zone (#F3F3F3) with the centered grey Pulse Gym logo,
@@ -20,7 +23,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Link, router } from 'expo-router';
+import { Link, router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -31,10 +34,12 @@ import { ModalSheet } from '@/components/ui/modal-sheet';
 import { PressSurface } from '@/components/ui/press-surface';
 import { RiseIn } from '@/components/ui/rise-in';
 import { DemoBadge } from '@/components/ui/demo-badge';
+import { StatusBadge } from '@/components/ui/status-badge';
 import {
   AuthHeader,
   AuthPanel,
   AuthHeading,
+  AuthCard,
   CategorySelector,
   AuthErrorMessage,
   type AuthCategory,
@@ -43,6 +48,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTokens } from '@/hooks/use-tokens';
 import { hapticSelect } from '@/utils/haptics';
 import { isEmail } from '@/utils/format';
+import { demoCredentials, useAuth } from '@/services/auth';
 import type { Role } from '@/types/domain';
 
 const roleOrder: Role[] = ['owner', 'receptionist', 'member'];
@@ -57,26 +63,27 @@ export default function LoginScreen() {
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius } = tokens;
+  const { provider, completeSignIn, enterPreview } = useAuth();
+  const params = useLocalSearchParams<{ email?: string }>();
 
   const [role, setRole] = useState<Role>('member');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(typeof params.email === 'string' ? params.email : '');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [recoverOpen, setRecoverOpen] = useState(false);
 
   const validate = useCallback((): { email?: string; password?: string } => {
     const next: { email?: string; password?: string } = {};
     if (!email.trim()) next.email = 'Enter your email address.';
     else if (!isEmail(email)) next.email = 'That does not look like a valid email.';
     if (!password) next.password = 'Enter your password.';
-    else if (password.length < 6) next.password = 'Passwords are at least 8 characters. Re-check and try your account password.';
+    else if (password.length < 8) next.password = 'Passwords are at least 8 characters. Re-check and try your account password.';
     return next;
   }, [email, password]);
 
-  const onSubmit = useCallback(() => {
+  const onSubmit = useCallback(async () => {
     const found = validate();
     setErrors(found);
     if (Object.keys(found).length > 0) {
@@ -85,16 +92,46 @@ export default function LoginScreen() {
     }
     setSubmitError(null);
     setSubmitting(true);
-    // No backend exists in Part 1: no navigation to a workspace happens from
-    // a "successful" sign-in, because success cannot be verified. We stop
-    // loading after a beat and surface the demo path explicitly.
-    setTimeout(() => {
-      setSubmitting(false);
-      setPreviewOpen(true);
-    }, 650);
-  }, [validate]);
+    try {
+      // The provider validates the password AND the account's real role;
+      // the UI selection is never trusted.
+      const result = await provider.signIn(email.trim(), password, role);
+      switch (result.status) {
+        case 'ok': {
+          const done = await completeSignIn(result.pendingAuthId);
+          if (done.status === 'ok') {
+            router.replace(
+              `/success?mode=signin&role=${done.session.role}&name=${encodeURIComponent(done.session.displayName)}` as never,
+            );
+            return;
+          }
+          setSubmitError('This sign-in could not be completed. Please try again.');
+          break;
+        }
+        case 'mfa_required':
+          router.push(`/mfa?pending=${result.pendingAuthId}&challenge=${result.challenge.challengeId}` as never);
+          return;
+        case 'verification_required':
+          router.push(
+            `/verify?pending=${result.pendingAuthId}&missing=${result.missing.join(',')}&email=${encodeURIComponent(email.trim())}` as never,
+          );
+          return;
+        case 'rate_limited':
+          setSubmitError(`Too many attempts. For security, wait ${result.retryAfterSeconds}s and try again.`);
+          break;
+        case 'invalid':
+          // One coarse message — never reveals which field was wrong or
+          // whether an account exists.
+          setSubmitError('Email or password is incorrect for this account. Check them and try again.');
+          break;
+      }
+    } catch {
+      setSubmitError('Sign-in is unavailable right now. Try again shortly.');
+    }
+    setSubmitting(false);
+  }, [validate, provider, completeSignIn, role, email, password]);
 
-  const forgot = useCallback(() => setRecoverOpen(true), []);
+  const forgot = useCallback(() => router.push('/forgot-password' as never), []);
 
   const roleSummary = useMemo(
     () => `${roleMeta[role].label}: ${roleMeta[role].blurb}`,
@@ -232,8 +269,8 @@ export default function LoginScreen() {
                 disabled={submitting}
                 fullWidth
                 variant="primarySoft"
-                onPress={onSubmit}
-                accessibilityHint="Sign-in is not connected to a server in this preview."
+                onPress={() => void onSubmit()}
+                accessibilityHint="Runs the full authentication flow: credentials, MFA for staff, verification for unverified accounts."
               />
               {/* Minimal text links (reference avoids outlined buttons) */}
               <PressSurface
@@ -252,16 +289,68 @@ export default function LoginScreen() {
             <RiseIn index={6}>
               <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', marginTop: spacing.xs }}>
                 <View style={{ flex: 1 }}>
-                  <DemoBadge label="No server connected" />
+                  <DemoBadge label="Demo auth provider" />
                 </View>
                 <AppText variant="caption" style={{ color: colors.authInkSubtle, textAlign: 'right', flex: 1 }}>
-                  Sign-in, OTP and payments arrive with the backend in Parts 2 to 4.
+                  Sign-in, MFA, OTP and recovery run against the in-app demo provider.
                 </AppText>
               </View>
             </RiseIn>
 
-            {/* Member registration entry point — minimal text link */}
+            {/* Demo accounts: honest, press-to-fill. The demo provider owns
+                these identities; a live provider removes this block. */}
             <RiseIn index={7}>
+              <AuthCard style={{ marginTop: spacing.sm }}>
+                <AppText variant="label" style={{ color: colors.authInk }}>
+                  Demo accounts
+                </AppText>
+                <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: 1 }}>
+                  Tap one to fill the form. MFA applies to staff.
+                </AppText>
+                <View style={{ marginTop: spacing.xs, gap: spacing.xxs }}>
+                  {demoCredentials.map((cred) => (
+                    <PressSurface
+                      key={cred.email}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Fill demo ${cred.role} account ${cred.email}`}
+                      onPress={() => {
+                        setRole(cred.role);
+                        setEmail(cred.email);
+                        setPassword(cred.password);
+                        setSubmitError(null);
+                      }}
+                      scaleOnPress={false}
+                      hitPadding={spacing.xxs}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: spacing.xs,
+                        minHeight: 40,
+                        padding: spacing.xxs,
+                        borderRadius: radius.sm,
+                        borderWidth: 1,
+                        borderColor: colors.authRule,
+                        backgroundColor: colors.authField,
+                      }}>
+                      <Ionicons
+                        name={cred.role === 'owner' ? 'shield-checkmark-outline' : cred.role === 'receptionist' ? 'people-outline' : 'person-outline'}
+                        size={16}
+                        color={colors.authInkSubtle}
+                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <AppText variant="caption" numberOfLines={1} style={{ color: colors.authInk }}>
+                          {cred.email} · {cred.password}
+                        </AppText>
+                      </View>
+                      {cred.mfa && <StatusBadge label="MFA" tone="warning" small />}
+                    </PressSurface>
+                  ))}
+                </View>
+              </AuthCard>
+            </RiseIn>
+
+            {/* Member registration entry point — minimal text link */}
+            <RiseIn index={8}>
               <View
                 style={{
                   borderTopWidth: 1,
@@ -292,7 +381,7 @@ export default function LoginScreen() {
             </RiseIn>
 
             <AppText variant="caption" align="center" style={{ color: colors.authInkSubtle, marginTop: spacing.md }}>
-              Sessions, password recovery and account security land in Part 2. Nothing on this screen is sent anywhere.
+              The demo provider keeps everything in memory — nothing is delivered or stored anywhere while no server is connected.
             </AppText>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -303,7 +392,7 @@ export default function LoginScreen() {
         visible={previewOpen}
         onClose={() => setPreviewOpen(false)}
         title="Preview a workspace"
-        subtitle="Demo navigation only. Role-based access is enforced by the backend in Part 2."
+        subtitle="Demo navigation only. Real sessions are role-gated by the workspace guards."
         surface="auth">
         <AppText variant="label" style={{ color: colors.authInkMuted }}>
           No sign-in happened. These open read-only, sample-data versions of the role workspaces so every screen can be reviewed.
@@ -315,7 +404,9 @@ export default function LoginScreen() {
               accessibilityRole="button"
               onPress={() => {
                 setPreviewOpen(false);
-                openWorkspace(r);
+                // Demo preview: explicit, badge-labelled, no session issued.
+                enterPreview(r);
+                router.replace(openWorkspacePath(r) as never);
               }}
               scaleOnPress={false}
               style={{
@@ -343,22 +434,7 @@ export default function LoginScreen() {
           ))}
         </View>
         <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.sm }}>
-          Every workspace shows its role tag in the header and a Demo data badge on live numbers.
-        </AppText>
-      </ModalSheet>
-
-      {/* Password recovery: honest placeholder */}
-      <ModalSheet
-        visible={recoverOpen}
-        onClose={() => setRecoverOpen(false)}
-        title="Forgot password"
-        subtitle="Secure recovery flow arrives in Part 2"
-        surface="auth">
-        <AppText variant="body" style={{ color: colors.authInk }}>
-          Passwords are not reset in this preview. The real flow uses a signed email step, rate limits and account recovery with the gym&apos;s help desk.
-        </AppText>
-        <AppText variant="label" style={{ color: colors.authInkMuted, marginTop: spacing.xs }}>
-          Members: talk to the reception desk. Staff: contact the Owner.
+          Every workspace shows its role tag in the header and a Demo data badge on live numbers. Leaving a preview returns to login.
         </AppText>
       </ModalSheet>
     </View>
@@ -373,16 +449,12 @@ function submittedPlaceholder(role: Role) {
 function openWorkspacePath(role: Role) {
   switch (role) {
     case 'owner':
-      return '/(owner)/report';
+      return '/(owner)/dashboard';
     case 'receptionist':
       return '/(reception)/home';
     default:
       return '/(member)/attendance';
   }
-}
-
-function openWorkspace(role: Role) {
-  router.replace(openWorkspacePath(role) as never);
 }
 
 export const loginScreenStyles = StyleSheet.create({});

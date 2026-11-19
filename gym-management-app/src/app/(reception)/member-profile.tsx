@@ -1,16 +1,19 @@
 /**
  * Full Member Profile — the Receptionist's central place for one member.
  *
- * Every section derives from the shared demo-labelled records (Part 1 has
- * no backend); fields the data model does not carry (photo, date of
- * birth, gender, address, emergency contact, plan/renewal history,
- * freeze history) render honest "not recorded" lines — never invented.
+ * Every section derives from the records the session may read: the shared
+ * demo-labelled set in demo mode, or the authorised live member, payment,
+ * attendance and plan rows in live mode. Fields the data model does not
+ * carry (photo, date of birth, gender, address, emergency contact,
+ * plan/renewal history, freeze history) render honest "not recorded" lines
+ * — never invented.
  *
  * Section map (brief layout): Header · Contact (call/email where the
  * device supports it) · Membership · Payments & Fees · Attendance ·
  * Membership History · Quick Actions. Contact edits are the receptionist's
- * one permitted write here, staged in the session store with an explicit
- * demo caption; membership state is never edited from this screen.
+ * one permitted demo write, staged in the session store; in this read-only
+ * live stage the edit action is not offered. Membership state is never
+ * edited from this screen.
  *
  * Opened with ?id=<member id> from the Members list; links hand the same
  * id to Collect Payment (?member=) and the Attendance Register (?member=).
@@ -44,11 +47,20 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { demoAttendance, demoMemberHistory, demoPlans } from '@/data/demo';
+import { demoAttendance, demoMemberHistory } from '@/data/demo';
 import { useSessionMembers, useSessionPayments, updateSessionMember } from '@/data/session';
+import { useMemberProfile, usePlans } from '@/services/data';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { displayMembershipStatus } from '@/utils/membership';
 import { paymentStatusInfo } from '@/utils/payment';
-import { formatCurrency, formatDate, formatTime, isSameLocalDay, pluralise } from '@/utils/format';
+import {
+  formatCurrency,
+  formatDate,
+  formatTime,
+  isSameLocalDay,
+  memberDisplayId,
+  pluralise,
+} from '@/utils/format';
 import type { Member, MembershipStatus } from '@/types/domain';
 
 const navItems = [
@@ -85,50 +97,88 @@ export default function MemberProfileScreen() {
   const { colors, spacing } = tokens;
 
   const params = useLocalSearchParams<{ id?: string }>();
-  const members = useSessionMembers();
-  const payments = useSessionPayments();
+  const profileResource = useMemberProfile(params.id ?? null);
+  const plansResource = usePlans();
+  const sessionMembers = useSessionMembers();
+  const sessionPayments = useSessionPayments();
+  const live = profileResource.isLive;
 
-  const member: Member | null = useMemo(
-    () => members.find((m) => m.id === params.id) ?? null,
-    [members, params.id],
+  const sessionMember: Member | null = useMemo(
+    () => sessionMembers.find((m) => m.id === params.id) ?? null,
+    [sessionMembers, params.id],
   );
 
-  // Contact edit (the one permitted write) stages in the session store.
+  // Demo mode keeps the session stores and the approved demo history; live
+  // mode shows exactly the rows the signed-in staff role may select.
+  const member: Member | null = live ? (profileResource.data?.member ?? null) : sessionMember;
+  const memberPayments = useMemo(() => {
+    if (live) return profileResource.data?.payments ?? [];
+    return sessionMember ? sessionPayments.filter((p) => p.memberId === sessionMember.id) : [];
+  }, [live, profileResource.data, sessionMember, sessionPayments]);
+  const memberAttendance = useMemo(() => {
+    if (live) return profileResource.data?.attendance ?? [];
+    return sessionMember
+      ? [...demoAttendance, ...demoMemberHistory].filter((e) => e.memberId === sessionMember.id)
+      : [];
+  }, [live, profileResource.data, sessionMember]);
+  const plans = plansResource.data;
+
+  // Contact edit (the one permitted demo write) stages in the session store.
   const [editOpen, setEditOpen] = useState(false);
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
-  const plan = member ? demoPlans.find((p) => p.id === member.planId) ?? null : null;
-  const memberPayments = useMemo(
-    () => (member ? payments.filter((p) => p.memberId === member.id) : []),
-    [member, payments],
-  );
-  const memberAttendance = useMemo(
-    () => (member ? [...demoAttendance, ...demoMemberHistory].filter((e) => e.memberId === member.id) : []),
-    [member],
-  );
+  const plan = member ? plans.find((p) => p.id === member.planId) ?? null : null;
+
+  const refreshAll = () => {
+    profileResource.refresh();
+    plansResource.refresh();
+  };
 
   if (!member) {
+    const loading = live && profileResource.status === 'loading';
     return (
       <View style={{ flex: 1 }}>
-        <WorkspaceScreen title="Member profile" eyebrow="Member directory" subtitle="Member not found" demo actions={<SignOut />}>
-          <RiseIn>
-            <OwnerEmptyState
-              icon="person-outline"
-              title="No member matches that link"
-              hint="The member record for this profile could not be found. Return to the Members tab and search again."
-              actionLabel="Back to Members"
-              onAction={() => router.navigate('/(reception)/members' as never)}
-            />
-          </RiseIn>
+        <WorkspaceScreen
+          title="Member profile"
+          eyebrow="Member directory"
+          subtitle={loading ? 'Loading member record' : 'Member not found'}
+          demo={!live}
+          actions={<SignOut />}
+          refreshControl={<DataRefreshControl refreshing={loading} onRefresh={refreshAll} />}>
+          {profileResource.status === 'error' && (
+            <RiseIn>
+              <ErrorState
+                title="Member profile could not load"
+                message={profileResource.error ?? 'This member record is unavailable right now.'}
+                onRetry={refreshAll}
+              />
+            </RiseIn>
+          )}
+          {loading ? (
+            <RiseIn style={{ marginTop: spacing.sm }}>
+              <SkeletonRow count={4} />
+            </RiseIn>
+          ) : (
+            <RiseIn>
+              <OwnerEmptyState
+                icon="person-outline"
+                title="No member matches that link"
+                hint="The member record for this profile could not be found or is not visible to your role. Return to the Members tab and search again."
+                actionLabel="Back to Members"
+                onAction={() => router.navigate('/(reception)/members' as never)}
+              />
+            </RiseIn>
+          )}
         </WorkspaceScreen>
         <WorkspaceBottomNavigation active="members" items={navItems} />
       </View>
     );
   }
 
-  const memberIdDisplay = member.id.replace('m-', 'GB-').toUpperCase();
+  const memberIdDisplay = memberDisplayId(member.id);
+  const missingLabel = live ? 'Not recorded' : 'Not recorded in this demo';
   const status = displayMembershipStatus(member);
   const attendedToday = memberAttendance.filter((e) => isSameLocalDay(e.checkedInAt) && e.status !== 'failed');
   const verifiedPayments = memberPayments.filter((p) => p.state === 'verified');
@@ -150,6 +200,7 @@ export default function MemberProfileScreen() {
   };
 
   const saveEdit = () => {
+    if (live) return;
     const phone = editPhone.trim();
     const email = editEmail.trim();
     if (!phone || !email) {
@@ -167,7 +218,13 @@ export default function MemberProfileScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <WorkspaceScreen title={member.name} eyebrow="Member directory" subtitle={`Member profile · ${memberIdDisplay}`} demo actions={<SignOut />}>
+      <WorkspaceScreen
+        title={member.name}
+        eyebrow="Member directory"
+        subtitle={`Member profile · ${memberIdDisplay}`}
+        demo={!live}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={profileResource.status === 'loading'} onRefresh={refreshAll} />}>
         {/* 1. Profile header */}
         <RiseIn>
           <WorkspaceCard>
@@ -196,16 +253,18 @@ export default function MemberProfileScreen() {
           <WorkspaceSection
             title="Contact"
             action={
-              <IconButton name="create-outline" label="Edit contact details" onPress={openEdit} />
+              live ? undefined : (
+                <IconButton name="create-outline" label="Edit contact details" onPress={openEdit} />
+              )
             }>
             <WorkspaceCard>
               <DetailRow label="Phone" value={member.phone} />
               <DetailRow label="Email" value={member.email} />
-              <DetailRow label="Profile photo" value="Not recorded in this demo" />
-              <DetailRow label="Date of birth" value="Not recorded in this demo" />
-              <DetailRow label="Gender" value="Not recorded in this demo" />
-              <DetailRow label="Address" value="Not recorded in this demo" />
-              <DetailRow label="Emergency contact" value="Not recorded in this demo" />
+              <DetailRow label="Profile photo" value={missingLabel} />
+              <DetailRow label="Date of birth" value={missingLabel} />
+              <DetailRow label="Gender" value={missingLabel} />
+              <DetailRow label="Address" value={missingLabel} />
+              <DetailRow label="Emergency contact" value={missingLabel} />
               <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
                 <Button
                   label="Call"
@@ -224,6 +283,7 @@ export default function MemberProfileScreen() {
               </View>
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
                 Call and email open the device&apos;s own apps where the device supports them. Only fields that exist in the member record are shown.
+                {live ? ' Contact editing is not offered in this read-only stage.' : ''}
               </AppText>
             </WorkspaceCard>
           </WorkspaceSection>
@@ -342,7 +402,7 @@ export default function MemberProfileScreen() {
                 label="Freeze history"
                 value={member.status === 'frozen' ? 'Active freeze on record' : 'No freeze on record'}
               />
-              <DetailRow label="Previous plans / renewals" value="Not recorded in this demo" />
+              <DetailRow label="Previous plans / renewals" value={missingLabel} />
               {member.followUp.note && (
                 <DetailRow
                   label="Follow-up note"
@@ -350,7 +410,9 @@ export default function MemberProfileScreen() {
                 />
               )}
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
-                Renewal history, freeze records and follow-up timelines are written by audited server actions in later parts; this demo shows only what its records carry.
+                {live
+                  ? 'Renewal history, freeze records and follow-up timelines are written by audited server actions; this read-only stage shows only what the member record currently carries.'
+                  : 'Renewal history, freeze records and follow-up timelines are written by audited server actions in later parts; this demo shows only what its records carry.'}
               </AppText>
             </WorkspaceCard>
           </WorkspaceSection>
@@ -393,29 +455,31 @@ export default function MemberProfileScreen() {
         </RiseIn>
       </WorkspaceScreen>
 
-      {/* Edit contact sheet (permitted details only, staged for the session) */}
-      <ModalSheet
-        visible={editOpen}
-        onClose={() => setEditOpen(false)}
-        title="Edit contact details"
-        subtitle="Receptionists may update phone and email">
-        <View style={{ gap: spacing.sm }}>
-          <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
-            {member.name}
-          </AppText>
-          <TextField label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
-          <TextField label="Email" value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" autoCapitalize="none" />
-          {editError && (
-            <AppText variant="caption" style={{ color: colors.ownerErrorDeep }}>
-              {editError}
+      {/* Edit contact sheet (demo only — the live stage is read-only) */}
+      {!live && (
+        <ModalSheet
+          visible={editOpen}
+          onClose={() => setEditOpen(false)}
+          title="Edit contact details"
+          subtitle="Receptionists may update phone and email">
+          <View style={{ gap: spacing.sm }}>
+            <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
+              {member.name}
             </AppText>
-          )}
-          <Button label="Save contact details" fullWidth onPress={saveEdit} />
-          <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
-            This demo stages the edit for the session only — it is not database persistence. In production the backend validates the values and writes an audit entry with the signed-in receptionist as actor.
-          </AppText>
-        </View>
-      </ModalSheet>
+            <TextField label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
+            <TextField label="Email" value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" autoCapitalize="none" />
+            {editError && (
+              <AppText variant="caption" style={{ color: colors.ownerErrorDeep }}>
+                {editError}
+              </AppText>
+            )}
+            <Button label="Save contact details" fullWidth onPress={saveEdit} />
+            <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
+              This demo stages the edit for the session only — it is not database persistence. In production the backend validates the values and writes an audit entry with the signed-in receptionist as actor.
+            </AppText>
+          </View>
+        </ModalSheet>
+      )}
 
       <WorkspaceBottomNavigation active="members" items={navItems} />
     </View>
