@@ -6,6 +6,7 @@
  * the shared entrance; nothing loops forever except the loading pulse.
  */
 import { RefreshControl, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import type { ReactNode } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
@@ -129,8 +130,21 @@ export function ErrorState(props: {
   );
 }
 
-/** Pull-to-refresh control shared by screens reading live data. */
-export function DataRefreshControl(props: { refreshing: boolean; onRefresh: () => void }) {
+/**
+ * Pull-to-refresh control shared by screens reading live data.
+ *
+ * On web, react-native-web's ScrollView clones the `refreshControl` element
+ * and passes the scroll content as its children (it does not render the
+ * native refresh control). This wrapper must therefore accept and forward
+ * those children and the cloned style, otherwise every ScrollView that uses
+ * it renders an empty page on web.
+ */
+export function DataRefreshControl(props: {
+  refreshing: boolean;
+  onRefresh: () => void;
+  children?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
   const tokens = useTokens();
   return (
     <RefreshControl
@@ -138,7 +152,9 @@ export function DataRefreshControl(props: { refreshing: boolean; onRefresh: () =
       onRefresh={props.onRefresh}
       tintColor={tokens.colors.ownerAccent}
       colors={[tokens.colors.ownerAccent]}
-    />
+      style={props.style}>
+      {props.children}
+    </RefreshControl>
   );
 }
 

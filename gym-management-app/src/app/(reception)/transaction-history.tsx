@@ -12,9 +12,14 @@
  * - Demo mode reads the session store — the same source Payment QR and
  *   Collect Payment read and write; desk-recorded entries appear here
  *   immediately and reset on restart. Live mode reads the payment rows the
- *   signed-in staff role is authorised to select (read-only).
+ *   signed-in staff role is authorised to select and performs the authority
+ *   actions through the verified RPCs.
  * - Only verified entries are collected revenue; a recorded UTR is just a
  *   recorded reference, never verification; pending is never revenue.
+ * - Verification, rejection and reversal are server decisions. The screen
+ *   shows the server's answer verbatim, never simulates one, refuses to
+ *   offer an action the server would deny to the same person, and never
+ *   edits an original payment (a reversal is a new verified row).
  * - Missing fields are never invented: a record without a UTR shows "No
  *   reference on record"; the totals helper reports all zeros for months
  *   without records instead of fabricating transactions.
@@ -27,6 +32,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
+import { TextField } from '@/components/ui/text-field';
 import { StatRow } from '@/components/ui/stat-tile';
 import { SearchBar } from '@/components/ui/search-bar';
 import { ModalSheet } from '@/components/ui/modal-sheet';
@@ -52,8 +58,16 @@ import {
 import { PressSurface } from '@/components/ui/press-surface';
 import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { useTokens } from '@/hooks/use-tokens';
+import { useAuth } from '@/services/auth/auth-context';
 import { useSessionPayments, useSessionMembers } from '@/data/session';
-import { useMembers, usePayments, usePlans } from '@/services/data';
+import {
+  createReversal,
+  rejectPayment,
+  useMembers,
+  usePayments,
+  usePlans,
+  verifyPayment,
+} from '@/services/data';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { paymentStatusInfo, monthPaymentTotals } from '@/utils/payment';
 import {
@@ -135,6 +149,123 @@ export default function TransactionHistoryScreen() {
   const [todayMode, setTodayMode] = useState(true);
   const [yearMonth, setYearMonth] = useState<MonthPosition | null>(null); // null = current month
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Authority actions (live only). Every decision is made by the server;
+  // these states only carry the server's answer and the in-flight UI state.
+  const { session } = useAuth();
+  const myUserId = session?.userId ?? null;
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [reversalFor, setReversalFor] = useState<PaymentRecord | null>(null);
+  const [reversalAmount, setReversalAmount] = useState('');
+  const [reversalNote, setReversalNote] = useState('');
+  const [reversalError, setReversalError] = useState<string | null>(null);
+
+  // Verified reversals already recorded against each original payment.
+  const reversedByOriginal = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const record of records) {
+      if (record.entryType === 'reversal' && record.state === 'verified' && record.reversalOf) {
+        map.set(record.reversalOf, (map.get(record.reversalOf) ?? 0) + record.payable);
+      }
+    }
+    return map;
+  }, [records]);
+
+  const remainingFor = (record: PaymentRecord) =>
+    Math.max(0, record.payable - (reversedByOriginal.get(record.id) ?? 0));
+
+  // The server refuses self-verification/self-rejection and a reversal by
+  // the person who recorded or verified the original. The UI simply does
+  // not offer an action the server would refuse.
+  const selfRecorded = (record: PaymentRecord) =>
+    myUserId !== null && record.recordedBy === myUserId;
+  const selfVerified = (record: PaymentRecord) =>
+    myUserId !== null && record.verifiedById === myUserId;
+  const reversalBlocked = (record: PaymentRecord) =>
+    selfRecorded(record) || selfVerified(record);
+
+  const clearActionMessages = () => {
+    setActionError(null);
+    setActionNotice(null);
+  };
+
+  const handleVerify = async (record: PaymentRecord) => {
+    if (!live || actionBusy !== null) return;
+    clearActionMessages();
+    setActionBusy(record.id);
+    const outcome = await verifyPayment(record.id);
+    setActionBusy(null);
+    if (!outcome.ok) {
+      setActionError(outcome.error);
+      return;
+    }
+    setActionNotice(
+      `Payment for ${record.memberName} verified on the server. Membership validity is now derived from the verified record.`,
+    );
+    refreshAll();
+  };
+
+  const handleReject = async (record: PaymentRecord) => {
+    if (!live || actionBusy !== null) return;
+    clearActionMessages();
+    setActionBusy(record.id);
+    const outcome = await rejectPayment(record.id);
+    setActionBusy(null);
+    if (!outcome.ok) {
+      setActionError(outcome.error);
+      return;
+    }
+    setActionNotice(`Payment for ${record.memberName} rejected. The row stays on record and never extends membership.`);
+    refreshAll();
+  };
+
+  const openReversal = (record: PaymentRecord) => {
+    clearActionMessages();
+    setReversalError(null);
+    setReversalAmount('');
+    setReversalNote('');
+    setReversalFor(record);
+  };
+
+  const closeReversal = () => {
+    if (actionBusy !== null) return;
+    setReversalFor(null);
+    setReversalError(null);
+    setReversalAmount('');
+    setReversalNote('');
+  };
+
+  const submitReversal = async () => {
+    if (!reversalFor || actionBusy !== null) return;
+    const original = reversalFor;
+    const amount = Number(reversalAmount);
+    const remaining = remainingFor(original);
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount)) {
+      setReversalError('Enter the refund amount in whole rupees, greater than zero.');
+      return;
+    }
+    if (amount > remaining) {
+      setReversalError(`The remaining amount on this payment is ${formatCurrency(remaining)}.`);
+      return;
+    }
+    setReversalError(null);
+    setActionBusy(original.id);
+    const outcome = await createReversal(original.id, amount, reversalNote);
+    setActionBusy(null);
+    if (!outcome.ok) {
+      setReversalError(outcome.error);
+      return;
+    }
+    setActionNotice(
+      `Reversal of ${formatCurrency(amount)} recorded for ${original.memberName}. It is verified immediately, is deducted from revenue, and never edits the original payment.`,
+    );
+    setReversalFor(null);
+    setReversalAmount('');
+    setReversalNote('');
+    refreshAll();
+  };
 
   // Midnight today, stable across renders (same pattern as the register).
   const today = useMemo(() => {
@@ -354,6 +485,20 @@ export default function TransactionHistoryScreen() {
         {/* The register list — every row shows the record's real fields */}
         <RiseIn index={2} style={{ marginTop: spacing.sm }}>
           <WorkspaceSection title={`${periodLabel} — ${pluralise(rows.length, 'matching transaction', 'matching transactions')}`}>
+            {live && (actionError || actionNotice) ? (
+              <View style={{ marginBottom: spacing.sm }}>
+                {actionError ? (
+                  <AppText variant="label" style={{ color: colors.dangerStrong }}>
+                    The server refused the action: {actionError}
+                  </AppText>
+                ) : null}
+                {actionNotice ? (
+                  <AppText variant="label" style={{ color: colors.ownerSuccessDeep }}>
+                    {actionNotice}
+                  </AppText>
+                ) : null}
+              </View>
+            ) : null}
             {inPeriod.length === 0 ? (
               <OwnerEmptyState
                 icon="receipt-outline"
@@ -374,14 +519,26 @@ export default function TransactionHistoryScreen() {
                   const status = paymentStatusInfo(p.state);
                   const isOpen = p.id === openId;
                   const planName = planById.get(p.planId) ?? p.planId;
+                  const isReversal = p.entryType === 'reversal';
+                  const remaining = remainingFor(p);
+                  const canDecide = live && p.state === 'awaitingVerification' && !isReversal;
+                  const canReverse = live && p.state === 'verified' && !isReversal && remaining > 0;
                   return (
                     <View key={p.id}>
                       {rowIndex > 0 && <WorkspaceRowDivider />}
                       <OwnerListRow
                         leading={<OwnerMemberAvatar name={p.memberName} />}
-                        title={`${p.memberName} · ${formatCurrency(p.payable)}`}
+                        title={
+                          isReversal
+                            ? `Reversal · ${p.memberName} · ${formatCurrency(p.payable)}`
+                            : `${p.memberName} · ${formatCurrency(p.payable)}`
+                        }
                         detail={`${formatDate(p.createdAt)} · ${formatTime(p.createdAt)} · ${p.method.toUpperCase()} · ${memberDisplayId(p.memberId)}`}
-                        status={<OwnerStatusText {...status} />}
+                        status={
+                          isReversal
+                            ? <OwnerStatusText label="Reversal" tone="action" />
+                            : <OwnerStatusText {...status} />
+                        }
                         chevron
                         onPress={() => setOpenId(isOpen ? null : p.id)}
                       />
@@ -402,13 +559,88 @@ export default function TransactionHistoryScreen() {
                             {detailRow('Recorded', `${formatDate(p.createdAt)} · ${formatTime(p.createdAt)}`)}
                             {detailRow('Reference', p.utr ?? 'No reference on record')}
                             {detailRow('Status', status.label)}
+                            {isReversal
+                              ? detailRow(
+                                  'Reverses',
+                                  p.reversalOf ? `Payment ${p.reversalOf.slice(0, 8)}…` : 'Original payment',
+                                )
+                              : null}
+                            {!isReversal && p.state === 'verified' && reversedByOriginal.has(p.id)
+                              ? detailRow('Reversed', `${formatCurrency(reversedByOriginal.get(p.id) ?? 0)} of ${formatCurrency(p.payable)}`)
+                              : null}
                             {p.verifiedBy ? detailRow('Checked by', p.verifiedBy) : null}
+                            {p.verifiedAt
+                              ? detailRow('Checked', `${formatDate(p.verifiedAt)} · ${formatTime(p.verifiedAt)}`)
+                              : null}
                             {detailRow('Receipt', p.receiptIssued ? 'Issued' : 'Not issued')}
                             {p.note ? (
                               <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs }}>
                                 {p.note}
                               </AppText>
                             ) : null}
+
+                            {/* Verify / reject — server-authoritative. The
+                                server refuses self-verification, so the
+                                control is not offered in that case. */}
+                            {canDecide && (
+                              <View style={{ marginTop: spacing.sm }}>
+                                {selfRecorded(p) ? (
+                                  <AppText variant="caption" style={{ color: colors.ownerWarningDeep }}>
+                                    You recorded this entry. A different receptionist must verify or reject it — the server refuses self-verification.
+                                  </AppText>
+                                ) : (
+                                  <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                                    <Button
+                                      label={actionBusy === p.id ? 'Verifying…' : 'Verify payment'}
+                                      icon="shield-checkmark-outline"
+                                      size="small"
+                                      disabled={actionBusy !== null}
+                                      onPress={() => {
+                                        void handleVerify(p);
+                                      }}
+                                    />
+                                    <Button
+                                      label={actionBusy === p.id ? 'Rejecting…' : 'Reject'}
+                                      variant="secondary"
+                                      size="small"
+                                      disabled={actionBusy !== null}
+                                      onPress={() => {
+                                        void handleReject(p);
+                                      }}
+                                    />
+                                  </View>
+                                )}
+                                <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                                  Verification also requires a multi-factor (AAL2) session; the server enforces it.
+                                </AppText>
+                              </View>
+                            )}
+
+                            {/* Reversal — a new verified row, capped by the
+                                remaining amount, never an edit. */}
+                            {canReverse && (
+                              <View style={{ marginTop: spacing.sm }}>
+                                {reversalBlocked(p) ? (
+                                  <AppText variant="caption" style={{ color: colors.ownerWarningDeep }}>
+                                    You recorded or verified this payment. A different receptionist must record any reversal — the server refuses self-reversal.
+                                  </AppText>
+                                ) : (
+                                  <>
+                                    <Button
+                                      label="Record reversal"
+                                      icon="return-down-back-outline"
+                                      size="small"
+                                      variant="secondary"
+                                      disabled={actionBusy !== null}
+                                      onPress={() => openReversal(p)}
+                                    />
+                                    <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                                      Up to {formatCurrency(remaining)} remains reversible. A reversal is a new verified record and never edits this payment.
+                                    </AppText>
+                                  </>
+                                )}
+                              </View>
+                            )}
                           </OwnerWell>
                         </View>
                       )}
@@ -449,7 +681,7 @@ export default function TransactionHistoryScreen() {
                 value={formatCurrency(totals.totalVerified)}
                 count={totals.totalVerified}
                 countCurrency
-                hint="This month's collected revenue"
+                hint="Collected revenue after reversals"
                 icon="shield-checkmark-outline"
                 tone="mint"
               />
@@ -481,8 +713,27 @@ export default function TransactionHistoryScreen() {
                 tone="violet"
               />
             </StatRow>
+            <StatRow>
+              <OwnerStatTile
+                label="Reversal amount"
+                value={formatCurrency(totals.reversalAmount)}
+                count={totals.reversalAmount}
+                countCurrency
+                hint="Deducted — never revenue"
+                icon="return-down-back-outline"
+                tone="red"
+              />
+              <OwnerStatTile
+                label="Reversal entries"
+                value={String(totals.reversalCount)}
+                count={totals.reversalCount}
+                hint="Verified rows in this month"
+                icon="return-down-back-outline"
+                tone="red"
+              />
+            </StatRow>
             <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
-              {MONTH_NAMES[pos.month]} {pos.year} totals from every record in the month — search and filters apply to the list above, never to this summary. Only verified entries count as collected revenue; a recorded UTR alone never verifies a payment; pending is reported separately and is never revenue; nothing is counted twice.
+              {MONTH_NAMES[pos.month]} {pos.year} totals from every record in the month — search and filters apply to the list above, never to this summary. Only verified entries count as collected revenue; verified reversals are deducted from the month they were recorded in and are never revenue; a recorded UTR alone never verifies a payment; pending is reported separately and is never revenue; nothing is counted twice.
             </AppText>
           </WorkspaceSection>
         </RiseIn>
@@ -491,7 +742,7 @@ export default function TransactionHistoryScreen() {
           <WorkspaceWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
               {live
-                ? 'Showing the payment records your signed-in staff role is authorised to read. Only verified entries count as collected revenue; a recorded UTR alone never verifies a payment; pending is reported separately and is never revenue. Phone search matches the members’ recorded phone numbers; transaction records themselves carry no phone field.'
+                ? 'Showing the payment records your signed-in staff role is authorised to read. Verify and reject call the server authority functions (self-verification is refused); reversals are new verified rows capped by the remaining amount and never edit the original. Only verified entries count as collected revenue; a recorded UTR alone never verifies a payment; pending is reported separately and is never revenue. Phone search matches the members’ recorded phone numbers; transaction records themselves carry no phone field.'
                 : 'Entries recorded at the desk live in the session and reset when the app restarts — nothing here is saved to a database or server. Phone search matches the members’ recorded phone numbers; transaction records themselves carry no phone field.'}{' '}
               {totals.totalCount === 0 ? `${MONTH_NAMES[pos.month]} ${pos.year} has no recorded transactions yet.` : ''}
             </AppText>
@@ -540,6 +791,60 @@ export default function TransactionHistoryScreen() {
         <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
           The range covers the current year and the years that hold records; months without transactions show empty — nothing is generated.
         </AppText>
+      </ModalSheet>
+
+      {/* Reversal form — the server caps the amount by the remaining payable
+          and refuses a reversal by the person who recorded or verified the
+          original. This sheet only collects the input. */}
+      <ModalSheet
+        visible={reversalFor !== null}
+        onClose={closeReversal}
+        title="Record reversal"
+        subtitle="Creates a new verified reversal row; the original payment is never edited">
+        {reversalFor ? (
+          <View style={{ gap: spacing.sm }}>
+            <AppText variant="bodyStrong" style={{ color: colors.ink }}>
+              {reversalFor.memberName} · {formatCurrency(reversalFor.payable)}
+            </AppText>
+            <AppText variant="caption" style={{ color: colors.inkMuted }}>
+              Recorded {formatDate(reversalFor.createdAt)} · {reversalFor.method.toUpperCase()} · remaining{' '}
+              {formatCurrency(remainingFor(reversalFor))}
+            </AppText>
+            <TextField
+              label="Amount (whole rupees)"
+              placeholder="0"
+              keyboardType="number-pad"
+              inputMode="numeric"
+              value={reversalAmount}
+              onChangeText={(value) => {
+                setReversalAmount(value);
+                setReversalError(null);
+              }}
+              error={reversalError}
+            />
+            <TextField
+              label="Note (optional)"
+              placeholder="Reason for the reversal"
+              value={reversalNote}
+              onChangeText={setReversalNote}
+            />
+            <AppText variant="caption" style={{ color: colors.inkMuted }}>
+              A reversal is a separate verified record, counts as a deduction in the month it is
+              recorded, and never changes the original payment. The server refuses amounts above the
+              remaining payable and refuses self-reversal.
+            </AppText>
+            <Button
+              label={actionBusy ? 'Recording…' : 'Record reversal'}
+              icon="return-down-back-outline"
+              fullWidth
+              disabled={actionBusy !== null}
+              onPress={() => {
+                void submitReversal();
+              }}
+            />
+            <Button label="Cancel" variant="secondary" fullWidth onPress={closeReversal} />
+          </View>
+        ) : null}
       </ModalSheet>
 
       <WorkspaceBottomNavigation active="more" items={navItems} />

@@ -55,6 +55,7 @@ import {
 } from '@/data/session';
 import { parsePlanPrice } from '@/utils/payment';
 import { formatCurrency } from '@/utils/format';
+import { useAuth } from '@/services/auth';
 import type { MembershipPlan, PlanDuration } from '@/types/domain';
 
 const navItems = [
@@ -81,9 +82,13 @@ interface PlanAssignment {
 export default function ReceptionPlansScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
+  const { provider } = useAuth();
+  const live = provider.mode === 'live';
 
   // Session price overrides — the single shared store; editing a price
   // here shows across the Receptionist workspace for this session only.
+  // In live mode, plan price updates are owner-only (update_plan_price RPC),
+  // so the receptionist screen presents prices as read-only.
   const planPrices = useSessionPlanPrices();
   const priceOf = (p: MembershipPlan) => effectivePlanPrice(p.id, p.price, planPrices);
   const overridesActive = Object.keys(planPrices).length > 0;
@@ -192,7 +197,9 @@ export default function ReceptionPlansScreen() {
         <RiseIn index={priceNote ? 1 : 0}>
           <WorkspaceWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-              Receptionists can view plans, assign them to members, and adjust a plan&apos;s price for this session. Creating plans stays Owner-only, enforced by the backend in Part 2. Price edits are session-only — they reset when the app restarts and are never saved to a server or database.
+              {live
+                ? 'Receptionists can view plans and assign them to members. Plan price changes are owner-only (update_plan_price RPC). The prices shown here are the current live prices from the server.'
+                : 'Receptionists can view plans, assign them to members, and adjust a plan&apos;s price for this session. Creating plans stays Owner-only, enforced by the backend in Part 2. Price edits are session-only — they reset when the app restarts and are never saved to a server or database.'}
             </AppText>
           </WorkspaceWell>
         </RiseIn>
@@ -236,14 +243,16 @@ export default function ReceptionPlansScreen() {
                 </View>
               )}
               <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
-                <Button
-                  label="Edit price"
-                  size="small"
-                  variant="secondary"
-                  icon="create-outline"
-                  onPress={() => openPriceEdit(plan)}
-                  style={{ alignSelf: 'flex-start' }}
-                />
+                {!live && (
+                  <Button
+                    label="Edit price"
+                    size="small"
+                    variant="secondary"
+                    icon="create-outline"
+                    onPress={() => openPriceEdit(plan)}
+                    style={{ alignSelf: 'flex-start' }}
+                  />
+                )}
                 <Button
                   label="Assign to member"
                   size="small"
@@ -301,15 +310,16 @@ export default function ReceptionPlansScreen() {
         </AppText>
       </WorkspaceScreen>
 
-      {/* Price edit sheet — current vs proposed, explicit confirmation.
-          Nothing is applied until Confirm; Cancel discards entirely. */}
-      <ModalSheet
-        visible={!!editPlan}
-        onClose={closePriceEdit}
-        title={`Edit ${editPlan?.name ?? ''} price`}
-        subtitle="Session-only change"
-        toneBadge={<StatusBadge label="Session only" tone="warning" small />}>
-        {editPlan && (
+      {/* Price edit sheet — demo mode only. In live mode, plan price updates
+          are owner-only via the update_plan_price RPC. */}
+      {!live && (
+        <ModalSheet
+          visible={!!editPlan}
+          onClose={closePriceEdit}
+          title={`Edit ${editPlan?.name ?? ''} price`}
+          subtitle="Session-only change"
+          toneBadge={<StatusBadge label="Session only" tone="warning" small />}>
+          {editPlan && (
           <View style={{ gap: spacing.sm }}>
             <WorkspaceCard>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 30, alignItems: 'center' }}>
@@ -380,6 +390,7 @@ export default function ReceptionPlansScreen() {
           </View>
         )}
       </ModalSheet>
+      )}
 
       {/* Assign sheet */}
       <ModalSheet

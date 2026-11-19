@@ -72,6 +72,43 @@ export interface PaymentRecord {
   createdAt: string;
   verifiedBy?: string;
   note?: string;
+  /** Present on live rows: a reversal is a separate, never-edited record. */
+  entryType?: 'payment' | 'reversal';
+  /** Live reversal rows point at the payment they refund. */
+  reversalOf?: string;
+  /** Live rows: who recorded / verified, used only for segregation-of-duties UI. */
+  recordedBy?: string;
+  verifiedById?: string;
+  verifiedAt?: string;
+}
+
+export type FreezeState = 'pending' | 'approved' | 'rejected' | 'ended';
+
+/**
+ * A membership freeze as read from `membership_freezes`. Validity is derived
+ * by the server views from approved/ended windows; this record never carries
+ * an edited membership expiry.
+ */
+export interface FreezeRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  reason: string;
+  state: FreezeState;
+  requestedAt: string;
+  decidedAt?: string;
+  extensionDays: number | null;
+  endedAt?: string;
+  endedVia?: 'scan' | 'receptionist';
+}
+
+/** Server-owned gym settings the client may read (never secrets). */
+export interface GymSettings {
+  gymTimezone: string;
+  upiId: string | null;
+  attendanceTokenValiditySeconds: number;
 }
 
 export type ApplicationState = 'draft' | 'pendingVerification' | 'submitted' | 'approved' | 'rejected';

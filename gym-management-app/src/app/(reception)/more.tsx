@@ -180,7 +180,7 @@ export default function ReceptionMoreScreen() {
         <RiseIn index={sections.length} style={{ marginTop: spacing.md }}>
           <WorkspaceWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-              Receptionists collect payments, record references, request freezes and assign plans. Payment verification, plan prices and freeze approvals stay with the Owner — enforced by the backend in Part 2, never by this screen.
+              Receptionists collect payments, record references, verify or reject them (never their own), and request or decide freezes with a multi-factor session. Plan price changes have no client write path. Every role rule is enforced by the server, never by this screen.
             </AppText>
           </WorkspaceWell>
         </RiseIn>

@@ -211,7 +211,7 @@ export default function RenewalsScreen() {
               <RowLine
                 tone="info"
                 title="Freeze requests"
-                body="The desk submits freeze requests; the Owner approves or rejects them. Only approved freezes extend validity, within limits the Owner sets."
+                body="The desk submits freeze requests and a receptionist approves or rejects them — the Owner has no freeze write path. Only approved freezes extend validity; the server computes the extension and refuses overlaps."
               />
             </View>
             <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>

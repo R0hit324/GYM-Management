@@ -47,6 +47,7 @@ import { useTokens } from '@/hooks/use-tokens';
 import { demoGymName, demoGymUpiId } from '@/data/demo';
 import { useSessionQrConfig, updateSessionQrConfig, resetSessionQrConfig } from '@/data/session';
 import { buildUpiPayload, isValidUpiId } from '@/utils/upi';
+import { useAuth } from '@/services/auth';
 
 /** Accepted QR image formats and the size ceiling (5 MB). */
 const QR_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
@@ -61,6 +62,8 @@ const navItems = [
 export default function PaymentQrScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
+  const { provider } = useAuth();
+  const live = provider.mode === 'live';
 
   const qrConfig = useSessionQrConfig();
   const upiId = qrConfig.upiId;
@@ -180,15 +183,16 @@ export default function PaymentQrScreen() {
       <WorkspaceScreen
         title="Payment QR"
         eyebrow="Payments"
-        subtitle="The gym's UPI code and its configuration"
-        demo
+        subtitle={live ? 'The gym\'s UPI code (owner-configured)' : 'The gym\'s UPI code and its configuration'}
+        demo={!live}
         actions={<SignOut />}>
         {/* Gym UPI QR configuration — display, replace, UPI ID edit. Session
-            only; the UPI ID is a public payment address, never a secret. */}
+            only; the UPI ID is a public payment address, never a secret.
+            In live mode, UPI/QR configuration is owner-only via update_gym_settings RPC. */}
         <RiseIn>
           <WorkspaceSection
             title="Currently configured QR"
-            action={<StatusBadge label="Session only" tone="warning" small />}>
+            action={live ? <StatusBadge label="Live" tone="success" small /> : <StatusBadge label="Session only" tone="warning" small />}>
             <WorkspaceCard>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                 <Ionicons name="business-outline" size={22} color={colors.ownerAccentDeep} />
@@ -242,17 +246,25 @@ export default function PaymentQrScreen() {
                 )}
               </View>
 
-              {/* Configuration controls */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm }}>
-                <Button label="Replace QR image" size="small" variant="secondary" icon="image-outline" onPress={() => void pickQrImage()} />
-                {customImageUri && (
-                  <Button label="Revert to generated QR" size="small" variant="secondary" icon="refresh-outline" onPress={revertImage} />
-                )}
-                <Button label="Edit UPI ID" size="small" variant="secondary" icon="create-outline" onPress={openUpiEdit} />
-                {!configIsDefault && (
-                  <Button label="Reset configuration" size="small" variant="secondary" icon="backspace-outline" onPress={resetConfig} />
-                )}
-              </View>
+              {/* Configuration controls — demo mode only. In live mode, UPI/QR
+                  configuration is owner-only via update_gym_settings RPC. */}
+              {!live && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm }}>
+                  <Button label="Replace QR image" size="small" variant="secondary" icon="image-outline" onPress={() => void pickQrImage()} />
+                  {customImageUri && (
+                    <Button label="Revert to generated QR" size="small" variant="secondary" icon="refresh-outline" onPress={revertImage} />
+                  )}
+                  <Button label="Edit UPI ID" size="small" variant="secondary" icon="create-outline" onPress={openUpiEdit} />
+                  {!configIsDefault && (
+                    <Button label="Reset configuration" size="small" variant="secondary" icon="backspace-outline" onPress={resetConfig} />
+                  )}
+                </View>
+              )}
+              {live && (
+                <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.sm }}>
+                  UPI ID and QR image are configured by the owner via the update_gym_settings RPC. Receptionists see the live configuration here.
+                </AppText>
+              )}
               {pickerError && (
                 <AppText variant="caption" style={{ color: colors.ownerErrorDeep, marginTop: spacing.xs }}>
                   {pickerError}
@@ -289,79 +301,80 @@ export default function PaymentQrScreen() {
           </WorkspaceSection>
         </RiseIn>
 
-        {/* QR image preview — explicit manual confirmation before anything is
-            applied. This preview cannot decode QR codes, so a picked image is
-            never assumed to be a valid payment QR; the desk confirms it by
-            scanning it once themselves. */}
-        <ModalSheet
-          visible={previewUri !== null}
-          onClose={discardPreview}
-          title="Preview the picked image"
-          subtitle="Nothing is applied until you confirm"
-          toneBadge={<StatusBadge label="Not yet applied" tone="warning" small />}>
-          <View style={{ alignItems: 'center', gap: spacing.xs }}>
-            <View
-              style={{
-                padding: spacing.md,
-                backgroundColor: '#FFFFFF', // QR modules require max scanner contrast
-                borderRadius: tokens.radius.sm,
-                borderWidth: 1,
-                borderColor: colors.ownerRule,
-              }}>
-              <Image
-                source={previewUri ? { uri: previewUri } : undefined}
-                style={{ width: 220, height: 220 }}
-                contentFit="contain"
-                accessibilityLabel="Preview of the picked QR image"
-              />
-            </View>
-            {previewNote && (
-              <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-                {previewNote}
+        {/* QR image preview — demo mode only. In live mode, QR image
+            replacement is owner-only via update_gym_settings RPC. */}
+        {!live && (
+          <ModalSheet
+            visible={previewUri !== null}
+            onClose={discardPreview}
+            title="Preview the picked image"
+            subtitle="Nothing is applied until you confirm"
+            toneBadge={<StatusBadge label="Not yet applied" tone="warning" small />}>
+            <View style={{ alignItems: 'center', gap: spacing.xs }}>
+              <View
+                style={{
+                  padding: spacing.md,
+                  backgroundColor: '#FFFFFF', // QR modules require max scanner contrast
+                  borderRadius: tokens.radius.sm,
+                  borderWidth: 1,
+                  borderColor: colors.ownerRule,
+                }}>
+                <Image
+                  source={previewUri ? { uri: previewUri } : undefined}
+                  style={{ width: 220, height: 220 }}
+                  contentFit="contain"
+                  accessibilityLabel="Preview of the picked QR image"
+                />
+              </View>
+              {previewNote && (
+                <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
+                  {previewNote}
+                </AppText>
+              )}
+              <AppText variant="caption" align="center" style={{ color: colors.ownerInkMuted, marginBottom: spacing.xs }}>
+                The app cannot read QR codes, so picking an image never proves it is the gym&apos;s payment QR. Scan it once with a UPI app to confirm it opens the gym&apos;s payment address — only then apply it.
               </AppText>
-            )}
-            <AppText variant="caption" align="center" style={{ color: colors.ownerInkMuted, marginBottom: spacing.xs }}>
-              The app cannot read QR codes, so picking an image never proves it is the gym&apos;s payment QR. Scan it once with a UPI app to confirm it opens the gym&apos;s payment address — only then apply it.
-            </AppText>
-            <Button label="Use this image" icon="checkmark-outline" fullWidth onPress={confirmPreviewImage} />
-            <Button label="Choose a different image" variant="secondary" icon="image-outline" fullWidth onPress={() => void pickQrImage()} />
-            <Button label="Discard" variant="secondary" fullWidth onPress={discardPreview} />
-          </View>
-        </ModalSheet>
+              <Button label="Use this image" icon="checkmark-outline" fullWidth onPress={confirmPreviewImage} />
+              <Button label="Choose a different image" variant="secondary" icon="image-outline" fullWidth onPress={() => void pickQrImage()} />
+              <Button label="Discard" variant="secondary" fullWidth onPress={discardPreview} />
+            </View>
+          </ModalSheet>
+        )}
 
-        {/* UPI ID editing — format-only validation. The account is never
-            verified here, and the QR is never presented as a verified
-            merchant code because of it. */}
-        <ModalSheet
-          visible={upiEditOpen}
-          onClose={() => setUpiEditOpen(false)}
-          title="Edit the UPI ID"
-          subtitle="Format checked — the account is not verified"
-          toneBadge={<StatusBadge label="Not verified" tone="warning" small />}>
-          <TextField
-            label="UPI ID"
-            placeholder="name@bank"
-            value={upiDraft}
-            onChangeText={(v) => {
-              setUpiDraft(v);
-              setUpiError(null);
-            }}
-            error={upiError}
-            helper="The app checks the name@bank shape only — it cannot check that this account exists or belongs to the gym."
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-          />
-          <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.sm }}>
-            {customImageUri
-              ? 'The configured QR image is not regenerated from an unverified ID — if the new UPI ID must appear on the QR, replace the image too.'
-              : 'The generated QR will use this ID for the session. It is never presented as a verified merchant code.'}
-          </AppText>
-          <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
-            <Button label="Save UPI ID" icon="checkmark-outline" fullWidth onPress={saveUpiEdit} />
-            <Button label="Cancel" variant="secondary" fullWidth onPress={() => setUpiEditOpen(false)} />
-          </View>
-        </ModalSheet>
+        {/* UPI ID editing — demo mode only. In live mode, UPI ID
+            editing is owner-only via update_gym_settings RPC. */}
+        {!live && (
+          <ModalSheet
+            visible={upiEditOpen}
+            onClose={() => setUpiEditOpen(false)}
+            title="Edit the UPI ID"
+            subtitle="Format checked — the account is not verified"
+            toneBadge={<StatusBadge label="Not verified" tone="warning" small />}>
+            <TextField
+              label="UPI ID"
+              placeholder="name@bank"
+              value={upiDraft}
+              onChangeText={(v) => {
+                setUpiDraft(v);
+                setUpiError(null);
+              }}
+              error={upiError}
+              helper="The app checks the name@bank shape only — it cannot check that this account exists or belongs to the gym."
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+            />
+            <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.sm }}>
+              {customImageUri
+                ? 'The configured QR image is not regenerated from an unverified ID — if the new UPI ID must appear on the QR, replace the image too.'
+                : 'The generated QR will use this ID for the session. It is never presented as a verified merchant code.'}
+            </AppText>
+            <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
+              <Button label="Save UPI ID" icon="checkmark-outline" fullWidth onPress={saveUpiEdit} />
+              <Button label="Cancel" variant="secondary" fullWidth onPress={() => setUpiEditOpen(false)} />
+            </View>
+          </ModalSheet>
+        )}
 
         <AppText variant="caption" style={{ color: colors.ownerInkSubtle, textAlign: 'center', marginTop: spacing.lg }}>
           This screen configures the gym&apos;s UPI QR — it never marks a payment verified and never exposes payment credentials beyond the public UPI ID.

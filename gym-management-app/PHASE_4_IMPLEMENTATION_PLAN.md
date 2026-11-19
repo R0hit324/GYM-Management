@@ -2,7 +2,13 @@
 
 **Objective:** Map the existing React Native Expo app screens and role-based workspaces to the verified Supabase backend surface defined in migrations `0001_core_schema.sql` – `0004_views.sql`. Identify genuine missing APIs, frontend integration gaps, authentication requirements and residual risks.
 
-**Status:** Planning only. No application code, migrations or remote Supabase resources are modified. No Git operations.
+**Status:** Planning only. No application code, migrations or remote Supabase
+resources are modified. No Git operations.
+
+> **Closure update:** Phase 4 — Stage 4 (Owner Dashboard & Administrative
+> Integration) is **CLOSED** (approved by the project owner). See
+> `docs/PHASE_4_STAGE_4_OWNER_DASHBOARD_ADMINISTRATION_REPORT.md`. Stage 5 has
+> not started.
 
 **Correction notice:** This revision supersedes the first draft. Every permission, RPC name, view name and business rule below is verified directly against `0001`–`0004`. The first draft inferred permissions from screen names; that inference was wrong in several places and is corrected here.
 

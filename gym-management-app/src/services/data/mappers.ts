@@ -9,6 +9,8 @@
 import type {
   AttendanceEvent,
   DailyReportNumbers,
+  FreezeRecord,
+  GymSettings,
   Member,
   MembershipPlan,
   MembershipStatus,
@@ -20,6 +22,8 @@ import type {
   AttendanceRow,
   DailyReportRow,
   FollowUpRow,
+  FreezeRow,
+  GymSettingsRow,
   InactiveMemberRow,
   MemberStatusRow,
   MonthRevenueRow,
@@ -214,6 +218,38 @@ export function toPayment(row: PaymentRow, memberName: string): PaymentRecord {
     receiptIssued: row.receipt_issued,
     createdAt: row.recorded_at,
     note: row.note ?? undefined,
+    entryType: row.entry_type,
+    reversalOf: row.reversal_of ?? undefined,
+    recordedBy: row.recorded_by,
+    // The id is for the segregation-of-duties check only; screens never
+    // present a raw profile id as a person's name.
+    verifiedById: row.verified_by ?? undefined,
+    verifiedAt: row.verified_at ?? undefined,
+  };
+}
+
+export function toFreeze(row: FreezeRow, memberName: string): FreezeRecord {
+  return {
+    id: row.id,
+    memberId: row.member_id,
+    memberName,
+    startDate: row.start_date.slice(0, 10),
+    endDate: row.end_date.slice(0, 10),
+    reason: row.reason,
+    state: row.state,
+    requestedAt: row.requested_at,
+    decidedAt: row.decided_at ?? undefined,
+    extensionDays: row.extension_days,
+    endedAt: row.ended_at ?? undefined,
+    endedVia: row.ended_via ?? undefined,
+  };
+}
+
+export function toGymSettings(row: GymSettingsRow): GymSettings {
+  return {
+    gymTimezone: row.gym_timezone,
+    upiId: row.upi_id,
+    attendanceTokenValiditySeconds: row.attendance_token_validity_seconds,
   };
 }
 

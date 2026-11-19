@@ -12,6 +12,8 @@ import type {
   AttendanceRow,
   DailyReportRow,
   FollowUpRow,
+  FreezeRow,
+  GymSettingsRow,
   InactiveMemberRow,
   JoinApplicationRow,
   MemberStatusRow,
@@ -100,7 +102,7 @@ const MONTH_COLUMNS = [
   'refunds',
 ].join(',');
 
-const PAYMENT_COLUMNS = [
+export const PAYMENT_COLUMNS = [
   'id',
   'member_id',
   'plan_id',
@@ -216,4 +218,42 @@ export async function fetchJoinApplicationRows(): Promise<JoinApplicationRow[]> 
     .order('created_at', { ascending: false });
   if (error) throw new Error(messageOf(error));
   return (data ?? []) as unknown as JoinApplicationRow[];
+}
+
+const FREEZE_COLUMNS = [
+  'id',
+  'member_id',
+  'start_date',
+  'end_date',
+  'reason',
+  'state',
+  'requested_by',
+  'requested_at',
+  'decided_by',
+  'decided_at',
+  'extension_days',
+  'ended_at',
+  'ended_via',
+  'ended_by',
+].join(',');
+
+export async function fetchFreezeRows(): Promise<FreezeRow[]> {
+  const client = await requireClient();
+  const { data, error } = await client
+    .from('membership_freezes')
+    .select(FREEZE_COLUMNS)
+    .order('requested_at', { ascending: false });
+  if (error) throw new Error(messageOf(error));
+  return (data ?? []) as unknown as FreezeRow[];
+}
+
+export async function fetchGymSettingsRow(): Promise<GymSettingsRow | null> {
+  const client = await requireClient();
+  const { data, error } = await client
+    .from('app_settings')
+    .select('gym_timezone,upi_id,attendance_token_validity_seconds')
+    .eq('id', 1)
+    .limit(1);
+  if (error) throw new Error(messageOf(error));
+  return ((data ?? [])[0] as unknown as GymSettingsRow | undefined) ?? null;
 }

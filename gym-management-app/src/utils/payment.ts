@@ -46,28 +46,35 @@ export function paymentStatusInfo(
 }
 
 /**
- * Month-level financial totals from actual records (Stage 5). Pure and
- * double-count-safe: each record contributes to exactly one bucket, judged
- * in LOCAL time (never toISOString, which shifts dates across offsets).
+ * Month-level financial totals from actual records (Stage 5).
+ * Pure and double-count-safe: each record contributes to exactly one
+ * revenue bucket, judged in LOCAL time (never toISOString, which shifts
+ * dates across offsets).
  *
- * Only `verified` entries count as collected revenue, split by method;
+ * Only `verified` entries count as collected revenue, split by method.
+ * A verified reversal (Stage 3) is a deduction in the month it was
+ * recorded, inheriting its original method — it never becomes revenue.
  * `awaitingVerification` is reported separately and is never revenue; a
  * recorded UTR changes nothing here — verification status decides.
  * `rejected` entries count only in `totalCount`. Months without records
  * return all zeros — nothing is fabricated.
  */
 export interface MonthPaymentTotals {
-  /** Verified UPI collections for the month. */
+  /** Verified UPI collections net of verified UPI reversals. */
   verifiedUpi: number;
-  /** Verified cash collections for the month. */
+  /** Verified cash collections net of verified cash reversals. */
   verifiedCash: number;
-  /** Verified UPI + verified cash — the month's collected revenue. */
+  /** Verified UPI + verified cash, after reversals — collected revenue. */
   totalVerified: number;
+  /** Sum of verified reversal rows (a deduction, never revenue). */
+  reversalAmount: number;
+  /** Number of verified reversal rows. */
+  reversalCount: number;
   /** Sum of pending (awaiting verification) amounts — never revenue. */
   pendingAmount: number;
   /** Number of pending entries. */
   pendingCount: number;
-  /** Every record in the month, any state. */
+  /** Every record in the month, any state or entry type. */
   totalCount: number;
 }
 
@@ -81,6 +88,8 @@ export function monthPaymentTotals(
     verifiedUpi: 0,
     verifiedCash: 0,
     totalVerified: 0,
+    reversalAmount: 0,
+    reversalCount: 0,
     pendingAmount: 0,
     pendingCount: 0,
     totalCount: 0,
@@ -90,13 +99,21 @@ export function monthPaymentTotals(
     if (d.getFullYear() !== year || d.getMonth() !== month) continue;
     totals.totalCount += 1;
     if (p.state === 'verified') {
-      if (p.method === 'upi') totals.verifiedUpi += p.payable;
-      else totals.verifiedCash += p.payable;
-      totals.totalVerified += p.payable;
+      if (p.entryType === 'reversal') {
+        totals.reversalAmount += p.payable;
+        totals.reversalCount += 1;
+        if (p.method === 'upi') totals.verifiedUpi -= p.payable;
+        else totals.verifiedCash -= p.payable;
+      } else if (p.method === 'upi') {
+        totals.verifiedUpi += p.payable;
+      } else {
+        totals.verifiedCash += p.payable;
+      }
     } else if (p.state === 'awaitingVerification') {
       totals.pendingAmount += p.payable;
       totals.pendingCount += 1;
     }
   }
+  totals.totalVerified = totals.verifiedUpi + totals.verifiedCash;
   return totals;
 }

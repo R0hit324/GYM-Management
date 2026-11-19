@@ -136,6 +136,34 @@ export interface JoinApplicationRow {
   state: string;
 }
 
+export type FreezeState = 'pending' | 'approved' | 'rejected' | 'ended';
+export type FreezeEndedVia = 'scan' | 'receptionist' | null;
+
+/** Exact `membership_freezes` row shape (Stage 3 reads; writes use RPCs). */
+export interface FreezeRow {
+  id: string;
+  member_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  state: FreezeState;
+  requested_by: string;
+  requested_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  extension_days: number | null;
+  ended_at: string | null;
+  ended_via: FreezeEndedVia;
+  ended_by: string | null;
+}
+
+/** Singleton `app_settings` row (no secrets are stored in this table). */
+export interface GymSettingsRow {
+  gym_timezone: string;
+  upi_id: string | null;
+  attendance_token_validity_seconds: number;
+}
+
 /** A month aggregate ready for the owner revenue card. */
 export interface MonthRevenueSummary {
   month: string;

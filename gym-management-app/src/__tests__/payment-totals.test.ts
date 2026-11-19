@@ -91,6 +91,8 @@ describe('monthPaymentTotals', () => {
       verifiedUpi: 0,
       verifiedCash: 0,
       totalVerified: 0,
+      reversalAmount: 0,
+      reversalCount: 0,
       pendingAmount: 0,
       pendingCount: 0,
       totalCount: 0,
@@ -106,5 +108,48 @@ describe('monthPaymentTotals', () => {
     expect(totals.totalCount).toBe(1);
     expect(totals.totalVerified).toBe(0);
     expect(totals.pendingCount).toBe(0);
+  });
+
+  it('treats a verified reversal as a deduction in its own month, never revenue', () => {
+    const totals = monthPaymentTotals(
+      [
+        payment({ date: new Date(2026, 10, 2), payable: 3000, method: 'upi' }),
+        payment({ date: new Date(2026, 10, 10), payable: 1000, method: 'cash' }),
+        payment({
+          date: new Date(2026, 10, 12),
+          payable: 500,
+          method: 'upi',
+          entryType: 'reversal',
+          reversalOf: 'pay-original',
+        }),
+      ],
+      nov2026.year,
+      nov2026.month,
+    );
+    expect(totals.verifiedUpi).toBe(2500); // 3000 − 500 reversal
+    expect(totals.verifiedCash).toBe(1000);
+    expect(totals.totalVerified).toBe(3500);
+    expect(totals.reversalAmount).toBe(500);
+    expect(totals.reversalCount).toBe(1);
+    expect(totals.totalCount).toBe(3);
+    expect(totals.pendingAmount).toBe(0);
+  });
+
+  it('does not count an awaiting reversal as a deduction until it is verified', () => {
+    const totals = monthPaymentTotals(
+      [
+        payment({
+          date: new Date(2026, 10, 12),
+          payable: 500,
+          entryType: 'reversal',
+          state: 'awaitingVerification',
+        }),
+      ],
+      nov2026.year,
+      nov2026.month,
+    );
+    expect(totals.totalVerified).toBe(0);
+    expect(totals.reversalAmount).toBe(0);
+    expect(totals.pendingAmount).toBe(500);
   });
 });

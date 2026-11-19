@@ -14,7 +14,7 @@
  * keeps the approved sample data and its disclosure; live mode reads the
  * member's own membership and attendance rows through the shared client.
  */
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -26,6 +26,7 @@ import { RiseIn } from '@/components/ui/rise-in';
 import { CountUp, Meter } from '@/components/ui/motion';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { AttendanceCalendar } from '@/components/attendance-calendar';
+import { QrScanner } from '@/components/scan/qr-scanner';
 import { SignOut } from '@/components/workspace-meta';
 import {
   WorkspaceScreen,
@@ -43,7 +44,7 @@ import {
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
 import { demoAttendance, demoMemberHistory, demoMembers } from '@/data/demo';
-import { useMyAttendance, useMyMembership, usePlans } from '@/services/data';
+import { checkIn, checkInFailureKind, useMyAttendance, useMyMembership, usePlans } from '@/services/data';
 import { displayMembershipStatus } from '@/utils/membership';
 import { formatTime, formatDate } from '@/utils/format';
 
@@ -127,6 +128,52 @@ export default function MemberAttendanceScreen() {
     membershipResource.refresh();
     attendanceResource.refresh();
     plansResource.refresh();
+  };
+
+  // Live scan lifecycle. The backend owns every decision (validity, expiry,
+  // replay, freeze auto-end, pending payment). The screen only picks the
+  // result state from the server's answer and refreshes the member's own
+  // status after a success.
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  const scanningRef = useRef(false);
+  const refreshMembership = membershipResource.refresh;
+  const refreshAttendance = attendanceResource.refresh;
+
+  const handleScan = useCallback(
+    async (payload: string) => {
+      if (!live || scanningRef.current) return;
+      scanningRef.current = true;
+      setScanBusy(true);
+      setScanNotice(null);
+      const outcome = await checkIn(payload);
+      scanningRef.current = false;
+      setScanBusy(false);
+
+      if (outcome.ok) {
+        setState('success');
+        setScanNotice('Attendance recorded. Enjoy your session — repeat check-ins are allowed.');
+        refreshMembership();
+        refreshAttendance();
+        return;
+      }
+
+      const kind = checkInFailureKind(outcome);
+      setState(
+        kind === 'expiredToken'
+          ? 'expired'
+          : kind === 'pendingPayment' || kind === 'unlinked'
+            ? 'inactive'
+            : 'invalid',
+      );
+      setScanNotice(outcome.error);
+    },
+    [live, refreshMembership, refreshAttendance],
+  );
+
+  const scanAgain = () => {
+    setScanNotice(null);
+    setState('ready');
   };
 
   // This-week activity: verified demo check-ins since Monday, over the days
@@ -292,87 +339,121 @@ export default function MemberAttendanceScreen() {
               borderWidth: 1,
               borderColor: colors.ownerRule,
             }}>
-            {/* Scanner surface */}
+            {/* Scanner surface — live mode opens the camera; demo keeps the
+                explicitly-labelled review preview. */}
             <View style={{ height: 210, alignItems: 'center', justifyContent: 'center' }}>
-              <View
-                style={{
-                  width: 158,
-                  height: 158,
-                  borderRadius: tokens.radius.md,
-                  borderWidth: 2,
-                  borderColor: frameColor,
-                  borderStyle: 'dashed',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: spacing.xs,
-                }}>
-                <Ionicons
-                  name={state === 'success' ? 'checkmark-circle' : state === 'ready' ? 'scan-outline' : 'warning-outline'}
-                  size={44}
-                  color={frameColor}
+              {live && state === 'ready' ? (
+                <QrScanner
+                  onScanned={handleScan}
+                  style={{ height: 210, width: '100%' }}
                 />
-                <AppText variant="caption" align="center" style={{ paddingHorizontal: spacing.sm, color: colors.ownerInk }}>
-                  {state === 'ready' ? 'Centre the code inside the frame' : state === 'success' ? 'Checked in' : state === 'invalid' ? 'Invalid code' : state === 'expired' ? 'Expired code' : 'Membership inactive'}
-                </AppText>
-              </View>
+              ) : (
+                <View
+                  style={{
+                    width: 158,
+                    height: 158,
+                    borderRadius: tokens.radius.md,
+                    borderWidth: 2,
+                    borderColor: frameColor,
+                    borderStyle: 'dashed',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: spacing.xs,
+                  }}>
+                  <Ionicons
+                    name={state === 'success' ? 'checkmark-circle' : state === 'ready' ? 'scan-outline' : 'warning-outline'}
+                    size={44}
+                    color={frameColor}
+                  />
+                  <AppText variant="caption" align="center" style={{ paddingHorizontal: spacing.sm, color: colors.ownerInk }}>
+                    {state === 'ready' ? 'Centre the code inside the frame' : state === 'success' ? 'Checked in' : state === 'invalid' ? 'Scan refused' : state === 'expired' ? 'Expired code' : 'Not permitted'}
+                  </AppText>
+                </View>
+              )}
             </View>
             <View style={{ backgroundColor: colors.ownerPanelMuted, padding: spacing.md, gap: spacing.xs }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
                   {state === 'ready'
-                    ? 'Hold your QR at the entrance'
-                    : state === 'invalid'
-                      ? 'That QR is not an attendance code'
-                      : state === 'expired'
-                        ? 'This code has expired'
-                        : state === 'inactive'
-                          ? 'Membership is not active'
-                          : 'Checked in'}
+                    ? 'Scan the entrance code'
+                    : state === 'success'
+                      ? 'Checked in'
+                      : 'Attendance was not recorded'}
                 </AppText>
                 <OwnerStatusText
-                  label={state === 'success' ? 'Recorded' : state === 'ready' ? 'Awaiting scan' : state === 'invalid' ? 'Invalid code' : state === 'expired' ? 'Expired code' : 'Inactive'}
+                  label={
+                    live && scanBusy
+                      ? 'Checking…'
+                      : state === 'success'
+                        ? 'Recorded'
+                        : state === 'ready'
+                          ? 'Ready to scan'
+                          : state === 'invalid'
+                            ? 'Refused'
+                            : state === 'expired'
+                              ? 'Expired code'
+                              : 'Not permitted'
+                  }
                   tone={state === 'success' ? 'up' : state === 'ready' ? 'action' : state === 'invalid' || state === 'inactive' ? 'down' : 'warning'}
                 />
               </View>
               <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
-                {state === 'ready'
-                  ? 'Point the camera at the QR shown on the reception screen. Tokens refresh automatically; an old screenshot will not work.'
-                  : state === 'invalid'
-                    ? 'The code scanned does not belong to this gym. Attendance was not recorded. Show your membership screen or ask at the desk.'
-                    : state === 'expired'
-                      ? 'Attendance codes expire and are replaced automatically. Ask the desk to show the current one and scan again.'
-                      : state === 'inactive'
-                        ? 'Attendance cannot be recorded while membership is expired or frozen. The desk can take a renewal or freeze request.'
-                        : 'Enjoy the session. Multiple check-ins a day are allowed: scan again when you return.'}
+                {live && scanNotice
+                  ? scanNotice
+                  : state === 'ready'
+                    ? 'Point the camera at the QR shown on the reception screen. Codes expire and rotate; an old screenshot will not work.'
+                    : state === 'invalid'
+                      ? 'The code scanned could not be accepted. Attendance was not recorded. Show your membership screen or ask at the desk.'
+                      : state === 'expired'
+                        ? 'Attendance codes expire and are replaced automatically. Ask the desk to show the current one and scan again.'
+                        : state === 'inactive'
+                          ? 'Attendance cannot be recorded for this membership state. The desk can take a renewal or a freeze request.'
+                          : 'Enjoy the session. Multiple check-ins a day are allowed: scan again when you return.'}
               </AppText>
-              {/* Review control: switch designed states. Removed in Part 5 when
-                  the real scanner drives these outcomes. */}
-              <View style={{ marginTop: spacing.xs }}>
-                <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
-                  Review control, removed when the camera lands:
-                </AppText>
-                <View style={{ marginTop: spacing['3xs'] }}>
-                  <SegmentedTabs
-                    variant="owner"
+              {live && state !== 'ready' && (
+                <View style={{ marginTop: spacing.xs }}>
+                  <Button
+                    label="Scan again"
+                    icon="scan-outline"
                     size="small"
-                    options={scanStates.map((s) => ({ value: s.value, label: s.label }))}
-                    value={state}
-                    onChange={(v) => setState(v as ScanState)}
+                    variant="secondary"
+                    onPress={scanAgain}
                   />
                 </View>
-              </View>
+              )}
+              {/* Demo review control: switch designed states. Live mode is
+                  driven by real server answers instead. */}
+              {!live && (
+                <View style={{ marginTop: spacing.xs }}>
+                  <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
+                    Review control, removed when the camera lands:
+                  </AppText>
+                  <View style={{ marginTop: spacing['3xs'] }}>
+                    <SegmentedTabs
+                      variant="owner"
+                      size="small"
+                      options={scanStates.map((s) => ({ value: s.value, label: s.label }))}
+                      value={state}
+                      onChange={(v) => setState(v as ScanState)}
+                    />
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         </RiseIn>
 
-        {/* Camera permission note (state designed; request happens in Part 5) */}
+        {/* Camera note — live mode states the actual permission/validation
+            facts; demo mode keeps its honest preview disclosure. */}
         <RiseIn index={4}>
           <WorkspaceWell style={{ marginTop: spacing.md }}>
             <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start' }}>
               <Ionicons name="camera-outline" size={18} color={colors.ownerInkMuted} style={{ marginTop: spacing['3xs'] }} />
               <View style={{ flex: 1 }}>
                 <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
-                  Camera permission belongs to the scanner. This preview does not open the camera; Part 5 requests permission with a plain-language reason.
+                  {live
+                    ? 'The camera is used only to read the entrance QR. Nothing is recorded until the server confirms the scan. If camera access is denied, enable it in system settings.'
+                    : 'Camera permission belongs to the scanner. This preview does not open the camera; the live build requests permission with a plain-language reason.'}
                 </AppText>
               </View>
             </View>
@@ -486,7 +567,7 @@ export default function MemberAttendanceScreen() {
         </WorkspaceSection>
 
         <AppText variant="caption" align="center" style={{ color: colors.ownerInkSubtle, marginTop: spacing.lg }}>
-          A member is flagged inactive after 30 days without a recorded check-in. Scans, tokens and attendance writes are server-side (Part 5).
+          A member is flagged inactive after 30 days without a recorded check-in. Scans, tokens and attendance writes are validated server-side.
         </AppText>
       </WorkspaceScreen>
     </KeyboardAvoidingView>

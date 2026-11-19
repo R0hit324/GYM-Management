@@ -449,7 +449,7 @@ export default function MemberProfileScreen() {
         <RiseIn index={7} style={{ marginTop: spacing.md }}>
           <WorkspaceWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-              Receptionists may update contact details and collect payments. Membership state, verification and freeze approvals stay with the Owner and the backend.
+              Receptionists may collect payments, verify or reject them (never their own), and request or decide freezes. Contact edits are demo-only until a server write path exists. Membership state and every authority decision are enforced by the server.
             </AppText>
           </WorkspaceWell>
         </RiseIn>

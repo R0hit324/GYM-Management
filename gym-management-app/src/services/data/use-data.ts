@@ -16,6 +16,8 @@ import { useAuth } from '@/services/auth/auth-context';
 import type {
   AttendanceEvent,
   DailyReportNumbers,
+  FreezeRecord,
+  GymSettings,
   Member,
   MembershipPlan,
   PaymentRecord,
@@ -38,6 +40,8 @@ import {
   latestFollowUps,
   toAttendance,
   toDailyReport,
+  toFreeze,
+  toGymSettings,
   toInactiveMember,
   toMemberStatus,
   toMonthlyRevenue,
@@ -48,6 +52,8 @@ import {
   fetchAttendanceRows,
   fetchDailyReportRow,
   fetchFollowUpRows,
+  fetchFreezeRows,
+  fetchGymSettingsRow,
   fetchInactiveMemberRows,
   fetchJoinApplicationRows,
   fetchMemberStatusRows,
@@ -187,6 +193,20 @@ async function loadMemberProfile(memberId: string): Promise<MemberProfileData> {
   };
 }
 
+async function loadFreezes(): Promise<FreezeRecord[]> {
+  const [freezeRows, statusRows] = await Promise.all([
+    fetchFreezeRows(),
+    fetchMemberStatusRows(),
+  ]);
+  const names = new Map(statusRows.map((row) => [row.member_id, row.full_name] as const));
+  return freezeRows.map((row) => toFreeze(row, names.get(row.member_id) ?? 'Member'));
+}
+
+async function loadGymSettings(): Promise<GymSettings | null> {
+  const row = await fetchGymSettingsRow();
+  return row ? toGymSettings(row) : null;
+}
+
 // ---------------------------------------------------------------------------
 // Generic resource hook
 // ---------------------------------------------------------------------------
@@ -311,4 +331,14 @@ export function useMemberProfile(memberId: string | null): DataResource<MemberPr
     [memberId],
   );
   return useResource<MemberProfileData | null>(null, null, load);
+}
+
+/** Live freeze rows (demo mode keeps the screen's own session freeze book). */
+export function useFreezes(): DataResource<FreezeRecord[]> {
+  return useResource<FreezeRecord[]>([], [], loadFreezes);
+}
+
+/** The server-owned singleton settings row (null until configured in live mode). */
+export function useGymSettings(): DataResource<GymSettings | null> {
+  return useResource<GymSettings | null>(null, null, loadGymSettings);
 }

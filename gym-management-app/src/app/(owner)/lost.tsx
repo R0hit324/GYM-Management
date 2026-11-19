@@ -18,6 +18,7 @@ import { SegmentedTabs, FilterChip } from '@/components/ui/segmented-tabs';
 import { SearchBar } from '@/components/ui/search-bar';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { RiseIn } from '@/components/ui/rise-in';
+import { TextField } from '@/components/ui/text-field';
 import { SignOut } from '@/components/workspace-meta';
 import {
   OwnerScreen,
@@ -32,7 +33,12 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
-import { useInactiveMembers, usePlans } from '@/services/data';
+import { useAuth } from '@/services/auth';
+import {
+  useInactiveMembers,
+  usePlans,
+  recordFollowUp,
+} from '@/services/data';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { formatDate, daysBetween, memberDisplayId } from '@/utils/format';
 import type { Member } from '@/types/domain';
@@ -61,11 +67,53 @@ export default function LostMembersScreen() {
   const [onlyUntouched, setOnlyUntouched] = useState(false);
   const [selected, setSelected] = useState<Member | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [followUpChannel, setFollowUpChannel] = useState<'called' | 'messaged' | 'visited'>('called');
+  const [followUpOutcome, setFollowUpOutcome] = useState<'won' | 'lost' | 'open'>('open');
+  const [followUpNote, setFollowUpNote] = useState('');
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
+  const [followUpSuccess, setFollowUpSuccess] = useState(false);
 
   const inactiveResource = useInactiveMembers();
   const plansResource = usePlans();
   const inactiveMembers = inactiveResource.data;
   const live = inactiveResource.isLive;
+  const { session } = useAuth();
+
+  const recordFollowUpNow = async (member: Member) => {
+    if (!live) {
+      // Demo mode keeps its approved demo follow-ups; the server write path
+      // (follow_up_events) is live-only.
+      setFollowUpError('Demo mode cannot record follow-ups.');
+      return;
+    }
+    const outcome =
+      followUpOutcome === 'won'
+        ? 'won'
+        : followUpOutcome === 'lost'
+          ? 'lost'
+          : 'open';
+    const channel: 'called' | 'messaged' | 'visited' =
+      followUpChannel === 'called' ? 'called' : followUpChannel === 'messaged' ? 'messaged' : 'visited';
+    setFollowUpSaving(true);
+    setFollowUpError(null);
+    setFollowUpSuccess(false);
+    const result = await recordFollowUp({
+      actor: session?.userId ?? '',
+      memberId: member.id,
+      channel,
+      outcome,
+      note: followUpNote,
+    });
+    setFollowUpSaving(false);
+    if (!result.ok) {
+      setFollowUpError(result.error);
+      return;
+    }
+    setFollowUpSuccess(true);
+    // Refresh the list so the new follow-up state is reflected.
+    inactiveResource.refresh();
+  };
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -192,13 +240,20 @@ export default function LostMembersScreen() {
                 </AppText>
               )}
               <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm, flexWrap: 'wrap' }}>
-                <Button label="Mark called" size="small" icon="call-outline" variant="secondary" onPress={() => undefined} />
-                <Button label="Mark messaged" size="small" icon="chatbubble-ellipses-outline" variant="secondary" onPress={() => undefined} />
-                <Button label="Add follow-up note" size="small" variant="ghost" icon="create-outline" onPress={() => setLogOpen(true)} />
+                <Button label={followUpSaving ? 'Recording…' : 'Mark called'} size="small" icon="call-outline" variant="secondary" disabled={followUpSaving} onPress={() => void recordFollowUpNow(selected)} />
+                <Button label={followUpSaving ? 'Recording…' : 'Mark messaged'} size="small" icon="chatbubble-ellipses-outline" variant="secondary" disabled={followUpSaving} onPress={() => void recordFollowUpNow(selected)} />
+                <Button label={followUpSaving ? 'Recording…' : 'Add follow-up note'} size="small" variant="ghost" icon="create-outline" disabled={followUpSaving} onPress={() => { setLogOpen(true); setFollowUpNote(''); }} />
               </View>
-              <AppText variant="caption" style={{ color: tokens.colors.ownerInkSubtle, marginTop: spacing.xs }}>
-                Buttons are UI in this preview; writes land in the audit-logged backend (Part 9-10 polish).
-              </AppText>
+              {followUpError ? (
+                <AppText variant="caption" style={{ color: tokens.colors.ownerErrorDeep, marginTop: spacing.xs }}>
+                  The server refused the follow-up: {followUpError}
+                </AppText>
+              ) : null}
+              {followUpSuccess ? (
+                <AppText variant="caption" style={{ color: tokens.colors.ownerSuccessDeep, marginTop: spacing.xs }}>
+                  The follow-up was recorded and appears in the list.
+                </AppText>
+              ) : null}
             </View>
           )}
         </ModalSheet>
@@ -208,9 +263,29 @@ export default function LostMembersScreen() {
           onClose={() => setLogOpen(false)}
           title="Follow-up note"
           subtitle="Recorded with your name and time">
-          <AppText variant="label" style={{ color: tokens.colors.ownerInkMuted }}>
-            The real form writes an audit row: actor, member, note, timestamp. It cannot be edited or deleted afterwards — corrections are new rows.
-          </AppText>
+          <View style={{ gap: spacing.xs }}>
+            <AppText variant="label" style={{ color: tokens.colors.ownerInkMuted }}>
+              Record the follow-up against this member. The server writes the actor and timestamp; corrections are new rows, never edits.
+            </AppText>
+            <TextField label="Channel" value={followUpChannel} onChangeText={(v) => setFollowUpChannel(v as 'called' | 'messaged' | 'visited')} />
+            <TextField label="Outcome" value={followUpOutcome} onChangeText={(v) => setFollowUpOutcome(v as 'won' | 'lost' | 'open')} />
+            <TextField label="Note" value={followUpNote} onChangeText={setFollowUpNote} />
+            <Button
+              label={followUpSaving ? 'Saving…' : 'Save follow-up'}
+              fullWidth
+              disabled={followUpSaving}
+              onPress={() => {
+                if (selected) {
+                  void recordFollowUpNow(selected);
+                }
+              }}
+            />
+            {followUpError ? (
+              <AppText variant="caption" style={{ color: tokens.colors.ownerErrorDeep }}>
+                The server refused the follow-up: {followUpError}
+              </AppText>
+            ) : null}
+          </View>
         </ModalSheet>
 
         <AppText variant="caption" style={{ color: tokens.colors.ownerInkSubtle, marginTop: spacing.lg }} align="center">

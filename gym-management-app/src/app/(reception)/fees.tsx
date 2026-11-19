@@ -22,11 +22,14 @@
  * written as `awaitingVerification` — nothing in this demo verifies a
  * payment, and there is no fake gateway or fake success.
  *
- * Recording writes exactly one record into the shared session store (the
- * same source Transaction History, Home and Payment QR read), guarded
- * against double taps and duplicate UTRs. Every record is labelled
- * session-only: it resets on restart and is never presented as a database
- * save. Historical records are never modified.
+ * Recording is guarded against double taps and duplicate UTRs. Demo mode
+ * writes one record into the shared session store (the same source
+ * Transaction History, Home and Payment QR read) and labels it
+ * session-only. Live mode sends the authorised `payments` INSERT: the
+ * server's BEFORE INSERT trigger sets the prices, state, entry type and
+ * attribution, and the screen displays the returned row — a refusal is
+ * shown verbatim and never replaced by a success. Historical records are
+ * never modified; corrections are reversal records, not edits.
  */
 import { useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -44,6 +47,7 @@ import { AnimatedIcon } from '@/components/ui/animated-icon';
 import { RiseIn } from '@/components/ui/rise-in';
 import { CountUp, SuccessPop } from '@/components/ui/motion';
 import { QrDisplay } from '@/components/ui/qr-display';
+import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { SignOut } from '@/components/workspace-meta';
 import {
   WorkspaceScreen,
@@ -63,6 +67,7 @@ import {
 import { useTokens } from '@/hooks/use-tokens';
 import { demoPlans, demoGymName } from '@/data/demo';
 import { useSessionMembers, useSessionPayments, addSessionPayment, useSessionQrConfig, useSessionPlanPrices, effectivePlanPrice } from '@/data/session';
+import { recordPayment, toPayment, useGymSettings, useMembers, usePayments, usePlans } from '@/services/data';
 import { computePayable, paymentStatusInfo } from '@/utils/payment';
 import { buildUpiPayload } from '@/utils/upi';
 import { displayMembershipStatus } from '@/utils/membership';
@@ -106,11 +111,43 @@ const memberDisplayId = (memberId: string) => memberId.replace('m-', 'GB-').toUp
 export default function CollectPaymentScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
-  // The gym's session-configured UPI QR — the same Stage 4 store the
-  // Payment QR screen edits, so a configuration change shows here.
-  const qrConfig = useSessionQrConfig();
-  const members = useSessionMembers();
-  const records = useSessionPayments();
+
+  // Demo mode: the session stores the desk already uses. Live mode: the
+  // authorised backend rows through the shared read hooks. The same screen
+  // structure and pricing rules apply to both.
+  const sessionQrConfig = useSessionQrConfig();
+  const sessionMembers = useSessionMembers();
+  const sessionPayments = useSessionPayments();
+  const membersResource = useMembers();
+  const plansResource = usePlans();
+  const paymentsResource = usePayments();
+  const settingsResource = useGymSettings();
+  const live = membersResource.isLive;
+
+  const members = live ? membersResource.data : sessionMembers;
+  const plans = live ? plansResource.data : demoPlans;
+  const records = live ? paymentsResource.data : sessionPayments;
+
+  // The gym's UPI ID is session-configured in demo mode and read from the
+  // server settings row in live mode. No image is decoded either way.
+  const upiId = live ? settingsResource.data?.upiId ?? null : sessionQrConfig.upiId;
+  const customImageUri = live ? null : sessionQrConfig.customImageUri;
+
+  const refreshAll = () => {
+    membersResource.refresh();
+    plansResource.refresh();
+    paymentsResource.refresh();
+    settingsResource.refresh();
+  };
+  const liveLoading =
+    membersResource.status === 'loading' ||
+    plansResource.status === 'loading' ||
+    paymentsResource.status === 'loading';
+  const loadError =
+    membersResource.status === 'error' ||
+    plansResource.status === 'error' ||
+    paymentsResource.status === 'error';
+
   // Session plan price overrides (Membership Plans edits) — new
   // memberships price from the effective plan price; locked renewals never
   // read this store.
@@ -142,6 +179,8 @@ export default function CollectPaymentScreen() {
   // never create a second record.
   const savingRef = useRef(false);
   const [recorded, setRecorded] = useState<PaymentRecord | null>(null);
+  // Server refusal shown verbatim — never replaced by a friendlier guess.
+  const [recordError, setRecordError] = useState<string | null>(null);
 
   const member: Member | null = memberId ? (members.find((m) => m.id === memberId) ?? null) : null;
   const paramInvalid = typeof params.member === 'string' && member === null;
@@ -162,7 +201,12 @@ export default function CollectPaymentScreen() {
     });
   }, [members, query]);
 
-  const plan: MembershipPlan | null = planId ? (demoPlans.find((p) => p.id === planId) ?? null) : null;
+  const plan: MembershipPlan | null = planId ? (plans.find((p) => p.id === planId) ?? null) : null;
+
+  // Live plan prices come from the server catalogue; the session price
+  // overrides belong to demo mode only.
+  const effectivePriceOf = (p: MembershipPlan) =>
+    live ? p.price : effectivePlanPrice(p.id, p.price, planPrices);
 
   // Pricing: the member's own plan is a RENEWAL at their locked price —
   // never silently replaced by the current plan price. Any other plan is a
@@ -171,7 +215,7 @@ export default function CollectPaymentScreen() {
   const basePrice = plan
     ? isRenewal && member
       ? member.priceLocked
-      : effectivePlanPrice(plan.id, plan.price, planPrices)
+      : effectivePriceOf(plan)
     : 0;
 
   // Authorised desk discount: 0–50, clamped; an entry that is not exactly
@@ -228,8 +272,9 @@ export default function CollectPaymentScreen() {
   };
 
   // Step 6 — validate the whole transaction again, then write exactly one
-  // record. The latched ref makes repeated taps impossible to double-book.
-  const confirmRecord = () => {
+  // record. The latched ref makes repeated taps impossible to double-book;
+  // it is released only on a server refusal or "Collect another payment".
+  const confirmRecord = async () => {
     if (savingRef.current) return;
     if (member === null || plan === null || invalidDiscount || payable <= 0) return;
     if (method === 'upi' && (!utrValid || utrDuplicate)) {
@@ -243,6 +288,32 @@ export default function CollectPaymentScreen() {
     }
     savingRef.current = true;
     setSaving(true);
+    setRecordError(null);
+
+    if (live) {
+      // Authorised INSERT. The server owns prices, state, entry type and
+      // attribution; the returned row is what this screen must display.
+      const outcome = await recordPayment({
+        memberId: member.id,
+        planId: plan.id,
+        method,
+        discountPct: discount,
+        utr: method === 'upi' ? utrValue : undefined,
+        note: 'Recorded from Collect Payment (desk)',
+      });
+      if (!outcome.ok) {
+        savingRef.current = false;
+        setSaving(false);
+        setRecordError(outcome.error);
+        return;
+      }
+      setRecorded(toPayment(outcome.data, member.name));
+      setSaving(false);
+      setStep(6);
+      paymentsResource.refresh();
+      return;
+    }
+
     // Real recorded time; the id derives from the member and the reference
     // (UPI) or the recorded time (cash) — no invented identifiers.
     const createdAt = new Date().toISOString();
@@ -271,6 +342,7 @@ export default function CollectPaymentScreen() {
   const resetForNewPayment = () => {
     savingRef.current = false;
     setRecorded(null);
+    setRecordError(null);
     setStep(1);
     setPlanId(member ? member.planId : null);
     setDiscountPct('');
@@ -280,7 +352,7 @@ export default function CollectPaymentScreen() {
   };
 
   const pending = records.filter((p) => p.state === 'awaitingVerification');
-  const upiPayload = method === 'upi' ? buildUpiPayload(qrConfig.upiId, payable) : null;
+  const upiPayload = method === 'upi' && upiId ? buildUpiPayload(upiId, payable) : null;
 
   const detailRow = (label: string, value: string, strong = false) => (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', minHeight: 32, alignItems: 'center' }}>
@@ -302,8 +374,28 @@ export default function CollectPaymentScreen() {
         title="Collect Payment"
         eyebrow="Payments"
         subtitle="Member, plan, discount, method, review, record"
-        demo
-        actions={<SignOut />}>
+        demo={!live}
+        actions={<SignOut />}
+        refreshControl={<DataRefreshControl refreshing={live && liveLoading} onRefresh={refreshAll} />}>
+        {live && loadError ? (
+          <RiseIn>
+            <ErrorState
+              title="Payment data could not load"
+              message={
+                membersResource.error ??
+                plansResource.error ??
+                paymentsResource.error ??
+                'The payment sources are unavailable right now.'
+              }
+              onRetry={refreshAll}
+            />
+          </RiseIn>
+        ) : null}
+        {live && liveLoading && members.length === 0 && !recorded ? (
+          <RiseIn style={{ marginTop: spacing.sm }}>
+            <SkeletonRow count={3} />
+          </RiseIn>
+        ) : null}
         {/* Progress indicator — always visible, never animated mid-step */}
         <StepProgress current={recorded ? 6 : step} />
 
@@ -322,7 +414,7 @@ export default function CollectPaymentScreen() {
                 <WorkspaceRowDivider />
                 <View style={{ marginTop: spacing.xs, gap: spacing['3xs'] }}>
                   {detailRow('Member', `${recorded.memberName} · ${memberDisplayId(recorded.memberId)}`)}
-                  {detailRow('Plan', demoPlans.find((p) => p.id === recorded.planId)?.name ?? recorded.planId)}
+                  {detailRow('Plan', plans.find((p) => p.id === recorded.planId)?.name ?? recorded.planId)}
                   {detailRow('Original price', formatCurrency(recorded.originalPrice))}
                   {detailRow('Discount', recorded.discountPct > 0 ? `${recorded.discountPct}% off` : 'None')}
                   {detailRow('Final amount', formatCurrency(recorded.payable), true)}
@@ -332,7 +424,9 @@ export default function CollectPaymentScreen() {
                 </View>
               </WorkspaceCard>
               <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.sm }}>
-                Demo record for this session only — it resets when the app restarts and nothing was saved to a server or database. The entry is awaiting verification: the owner checks it against the UPI statement or the cash count before membership extends and a receipt issues. A recorded reference is not proof of payment.
+                {live
+                  ? 'Recorded on the server as awaiting verification. Nothing is verified here: authorised staff check it against the UPI statement or the cash count, and only then does membership extend. The transaction row is never edited later — corrections are reversal records.'
+                  : 'Demo record for this session only — it resets when the app restarts and nothing was saved to a server or database. The entry is awaiting verification: the owner checks it against the UPI statement or the cash count before membership extends and a receipt issues. A recorded reference is not proof of payment.'}
               </AppText>
               <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
                 <Button
@@ -385,7 +479,7 @@ export default function CollectPaymentScreen() {
                           {memberDisplayId(member.id)} · {member.phone}
                         </AppText>
                         <AppText variant="caption" numberOfLines={1} style={{ color: colors.ownerInkMuted }}>
-                          {demoPlans.find((p) => p.id === member.planId)?.name ?? member.planId}
+                          {plans.find((p) => p.id === member.planId)?.name ?? member.planId}
                           {member.membershipEnd ? ` · ends ${formatDate(member.membershipEnd)}` : ' · not active yet'}
                         </AppText>
                       </View>
@@ -428,9 +522,9 @@ export default function CollectPaymentScreen() {
             {member && (
               <RiseIn index={1} style={{ marginTop: spacing.sm }}>
                 <WorkspaceSection title="2 · Select plan">
-                  {demoPlans.map((p) => {
+                  {plans.map((p) => {
                     const renewal = p.id === member.planId && member.priceLocked > 0;
-                    const effectivePrice = effectivePlanPrice(p.id, p.price, planPrices);
+                    const effectivePrice = effectivePriceOf(p);
                     const price = renewal ? member.priceLocked : effectivePrice;
                     const selected = planId === p.id;
                     return (
@@ -481,8 +575,10 @@ export default function CollectPaymentScreen() {
                   })}
                   <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
                     {isRenewal
-                      ? `Renewal of ${member.name}'s own plan — their locked ${formatCurrency(member.priceLocked)} is used, never the current ${formatCurrency(effectivePlanPrice(member.planId, demoPlans.find((p) => p.id === member.planId)?.price ?? 0, planPrices))}.`
-                      : 'A plan different from the member\'s current one is a new membership at the currently configured price for this session.'}
+                      ? `Renewal of ${member.name}'s own plan — their locked ${formatCurrency(member.priceLocked)} is used, never the current ${formatCurrency(plan ? effectivePriceOf(plan) : 0)}.`
+                      : live
+                        ? 'A plan different from the member\'s current one is a new membership at the server catalogue price. The server recalculates the amount when it records the payment.'
+                        : 'A plan different from the member\'s current one is a new membership at the currently configured price for this session.'}
                   </AppText>
                 </WorkspaceSection>
               </RiseIn>
@@ -545,10 +641,16 @@ export default function CollectPaymentScreen() {
                         Pay by UPI
                       </AppText>
                       <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing['3xs'] }}>
-                        The member pays {formatCurrency(payable)} into {demoGymName}&apos;s UPI ID {qrConfig.upiId}.
+                        {live
+                          ? upiId
+                            ? `The member pays ${formatCurrency(payable)} to the gym's UPI ID ${upiId}. The reference below is recorded for verification — it never verifies the payment.`
+                            : settingsResource.status === 'loading'
+                              ? "Loading the gym's UPI ID from the server…"
+                              : "The server settings have no UPI ID, so no payment QR can be shown. Record the reference or collect by cash."
+                          : `The member pays ${formatCurrency(payable)} into ${demoGymName}'s UPI ID ${upiId}.`}
                       </AppText>
                       <View style={{ marginTop: spacing.sm, alignItems: 'center' }}>
-                        {qrConfig.customImageUri ? (
+                        {customImageUri ? (
                           <View style={{ alignItems: 'center', gap: spacing.xs }}>
                             <View
                               style={{
@@ -559,7 +661,7 @@ export default function CollectPaymentScreen() {
                                 borderColor: colors.ownerRule,
                               }}>
                               <Image
-                                source={{ uri: qrConfig.customImageUri }}
+                                source={{ uri: customImageUri }}
                                 style={{ width: 200, height: 200 }}
                                 contentFit="contain"
                                 accessibilityLabel="The gym's configured payment QR image"
@@ -573,11 +675,19 @@ export default function CollectPaymentScreen() {
                           <QrDisplay
                             payload={upiPayload}
                             size={184}
-                            caption="Standard UPI deep-link format carrying this member's payable amount. Session-configured UPI ID — edited on the Payment QR screen; the account is not verified."
+                            caption={
+                              live
+                                ? "Standard UPI deep-link carrying this member's payable amount. The UPI ID comes from the server settings row and is not verified by the app."
+                                : "Standard UPI deep-link format carrying this member's payable amount. Session-configured UPI ID — edited on the Payment QR screen; the account is not verified."
+                            }
                           />
                         ) : (
                           <AppText variant="caption" align="center" style={{ color: colors.ownerWarningDeep }}>
-                            The gym&apos;s UPI ID is not configured, so no payment QR can be shown. Collect by cash or record the reference without the QR.
+                            {live
+                              ? settingsResource.status === 'loading'
+                                ? "Waiting for the server settings row before a payment QR can be shown."
+                                : "No UPI ID is configured on the server, so no payment QR can be shown. Record the reference or collect by cash."
+                              : "The gym's UPI ID is not configured, so no payment QR can be shown. Collect by cash or record the reference without the QR."}
                           </AppText>
                         )}
                       </View>
@@ -606,7 +716,9 @@ export default function CollectPaymentScreen() {
                     </WorkspaceWell>
                   )}
                   <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
-                    Recorded entries live in this session only and reset when the app restarts — nothing is sent to a server.
+                    {live
+                      ? 'Recording sends one payment row to the server, which sets the prices and state. Membership extends only after authorised verification.'
+                      : 'Recorded entries live in this session only and reset when the app restarts — nothing is sent to a server.'}
                   </AppText>
                 </WorkspaceSection>
               </RiseIn>
@@ -631,6 +743,21 @@ export default function CollectPaymentScreen() {
                       ? 'This will be recorded as awaiting verification. A UTR is a recorded reference, not proof of payment — nothing is marked verified here.'
                       : 'This will be recorded as awaiting verification. Cash entries are verified against the owner\'s daily count, never by this screen.'}
                   </AppText>
+                  {live && (
+                    <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                      The server recalculates the price from the member&apos;s locked price or the plan catalogue and stores the row as awaiting verification; the amount shown above is confirmed by what the server returns.
+                    </AppText>
+                  )}
+                  {recordError && (
+                    <View style={{ marginTop: spacing.xs }}>
+                      <AppText variant="label" style={{ color: colors.dangerStrong }}>
+                        The payment was not recorded: {recordError}
+                      </AppText>
+                      <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing['3xs'] }}>
+                        If the connection dropped after sending, check Transaction History before trying again — the row may already be there.
+                      </AppText>
+                    </View>
+                  )}
                   <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
                     <Button
                       label={saving ? 'Recording…' : 'Confirm and record'}
@@ -689,9 +816,11 @@ export default function CollectPaymentScreen() {
             <RiseIn index={6} style={{ marginTop: spacing.md }}>
               <WorkspaceWell>
                 <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-                  {records.length > 0
-                    ? `${pluralise(records.length, 'record', 'records')} in this session — every one resets when the app restarts. Nothing here is saved to a database.`
-                    : 'No payment records in this session yet.'}
+                  {live
+                    ? `${pluralise(records.length, 'payment row', 'payment rows')} visible to this session. Verification and reversals happen on the Transaction History screen.`
+                    : records.length > 0
+                      ? `${pluralise(records.length, 'record', 'records')} in this session — every one resets when the app restarts. Nothing here is saved to a database.`
+                      : 'No payment records in this session yet.'}
                 </AppText>
               </WorkspaceWell>
             </RiseIn>
