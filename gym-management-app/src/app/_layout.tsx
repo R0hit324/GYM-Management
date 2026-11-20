@@ -25,6 +25,7 @@ import {
 
 import { Colors } from '@/constants/theme';
 import { AuthProviderBoundary } from '@/services/auth';
+import { installGlobalErrorHandlers, logger } from '@/services/observability';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -59,12 +60,18 @@ export default function RootLayout() {
     }
   }, [loaded, error]);
 
+  // Stage 2B WS-7: install global error + unhandled-rejection capture for the
+  // app. Best effort and idempotent; never throws.
+  useEffect(() => {
+    installGlobalErrorHandlers();
+  }, []);
+
   if (!loaded && !error) {
     return null;
   }
 
   if (error) {
-    console.error('Font loading error:', error);
+    logger.error('app.font_load_failed', 'app', { source: 'expo-font' });
     return null;
   }
 
@@ -88,6 +95,7 @@ export default function RootLayout() {
           <Stack.Screen name="(member)" />
           <Stack.Screen name="(reception)" />
           <Stack.Screen name="(owner)" />
+          <Stack.Screen name="legal/[doc]" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </AuthProviderBoundary>
     </ThemeProvider>

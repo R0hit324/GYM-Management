@@ -24,6 +24,7 @@ export default function MemberLayout() {
       }}>
       <Stack.Screen name="attendance" />
       <Stack.Screen name="payments" />
+      <Stack.Screen name="privacy" />
     </Stack>
   );
 }

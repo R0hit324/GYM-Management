@@ -35,6 +35,7 @@ export default function OwnerLayout() {
       <Stack.Screen name="settings" />
       <Stack.Screen name="audit" />
       <Stack.Screen name="staff" />
+      <Stack.Screen name="privacy" />
     </Stack>
   );
 }

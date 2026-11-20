@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppText } from '@/components/ui/text';
 import { RiseIn } from '@/components/ui/rise-in';
 import { SignOut } from '@/components/workspace-meta';
+import { LegalLink } from '@/components/legal/legal-link';
 import {
   OwnerScreen,
   OwnerBottomNavigation,
@@ -67,6 +68,12 @@ const administration: ManageRow[] = [
     href: '/(owner)/staff',
   },
   {
+    key: 'privacy',
+    title: 'Privacy requests',
+    detail: 'Review deletion, export, correction and privacy requests',
+    href: '/(owner)/privacy',
+  },
+  {
     key: 'audit',
     title: 'Audit log',
     detail: 'Append-only record of every authority action',
@@ -111,7 +118,21 @@ export default function OwnerMoreScreen() {
           <OwnerSection title="Administration">{renderRows(administration)}</OwnerSection>
         </RiseIn>
 
-        <RiseIn index={2} style={{ marginTop: spacing.md }}>
+        <RiseIn index={2}>
+          <OwnerSection title="Legal documents">
+            <OwnerWell>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+                <LegalLink doc="privacy" label="Privacy Policy" />
+                <LegalLink doc="terms" label="Terms of Service" />
+              </View>
+              <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing['3xs'] }}>
+                Versioned drafts. Complete the placeholders and obtain legal review before publication.
+              </AppText>
+            </OwnerWell>
+          </OwnerSection>
+        </RiseIn>
+
+        <RiseIn index={3} style={{ marginTop: spacing.md }}>
           <OwnerWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
               Every write on these screens is an owner-gated server function with an audit entry

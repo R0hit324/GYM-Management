@@ -22,6 +22,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { ActionGrid, ActionTile } from '@/components/ui/action-tile';
+import { PressSurface } from '@/components/ui/press-surface';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { RiseIn } from '@/components/ui/rise-in';
 import { CountUp, Meter } from '@/components/ui/motion';
@@ -578,6 +579,18 @@ export default function MemberAttendanceScreen() {
         <AppText variant="caption" align="center" style={{ color: colors.ownerInkSubtle, marginTop: spacing.lg }}>
           A member is flagged inactive after 30 days without a recorded check-in. Scans, tokens and attendance writes are validated server-side.
         </AppText>
+        <View style={{ alignItems: 'center', marginTop: spacing.xs }}>
+          <PressSurface
+            accessibilityRole="link"
+            accessibilityLabel="Open Privacy and data"
+            onPress={() => router.navigate('/(member)/privacy' as never)}
+            scaleOnPress={false}
+            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs }}>
+            <AppText variant="label" style={{ color: colors.ownerAccentDeep, fontWeight: '600' }}>
+              Privacy & data
+            </AppText>
+          </PressSurface>
+        </View>
       </WorkspaceScreen>
     </KeyboardAvoidingView>
   );

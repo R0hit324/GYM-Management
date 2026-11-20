@@ -34,6 +34,7 @@ import { ModalSheet } from '@/components/ui/modal-sheet';
 import { PressSurface } from '@/components/ui/press-surface';
 import { RiseIn } from '@/components/ui/rise-in';
 import { DemoBadge } from '@/components/ui/demo-badge';
+import { LegalLink } from '@/components/legal/legal-link';
 import { StatusBadge } from '@/components/ui/status-badge';
 import {
   AuthHeader,
@@ -384,6 +385,20 @@ export default function LoginScreen() {
               <AppText variant="caption" align="center" style={{ color: colors.authInkSubtle, marginTop: spacing['3xs'] }}>
                 Members join online. Staff accounts are issued by the owner.
               </AppText>
+              </View>
+            </RiseIn>
+
+            <RiseIn index={9}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                  gap: spacing.md,
+                  marginTop: spacing.md,
+                }}>
+                <LegalLink doc="privacy" label="Privacy Policy" tone="auth" />
+                <LegalLink doc="terms" label="Terms of Service" tone="auth" />
               </View>
             </RiseIn>
 

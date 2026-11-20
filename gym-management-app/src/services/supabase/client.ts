@@ -24,6 +24,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/services/observability';
 
 /** The app's Supabase client type (untyped database — schema lands with migrations). */
 export type AppSupabaseClient = SupabaseClient;
@@ -124,10 +125,7 @@ export async function getSupabaseClient(): Promise<AppSupabaseClient | null> {
   if (env.status !== 'ok') {
     if (!missingWarned) {
       missingWarned = true;
-      console.warn(
-        '[supabase] Environment not configured — the app runs on the demo provider. ' +
-          'Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env (see .env.example).',
-      );
+      logger.warn('supabase.client.env_missing', 'services.supabase', { reason: 'supabase_environment_not_configured' });
     }
     return null;
   }

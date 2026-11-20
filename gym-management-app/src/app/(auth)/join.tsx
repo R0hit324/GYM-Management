@@ -34,6 +34,8 @@ import { PressSurface } from '@/components/ui/press-surface';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { StepDots } from '@/components/ui/step-dots';
 import { RiseIn } from '@/components/ui/rise-in';
+import { ConsentCheckbox } from '@/components/legal/consent-checkbox';
+import { LegalLink } from '@/components/legal/legal-link';
 import {
   AuthErrorMessage,
   AuthHeader,
@@ -50,6 +52,13 @@ import { formatCurrency, isEmail, isPhone } from '@/utils/format';
 import { checkPassword, useAuth } from '@/services/auth';
 import type { AuthChallenge } from '@/services/auth';
 import { submitJoinApplication } from '@/services/data';
+import {
+  INITIAL_JOIN_CONSENT,
+  buildJoinConsentEvents,
+  isJoinConsentComplete,
+  recordConsents,
+  type ConsentChoiceState,
+} from '@/services/consent';
 
 const STEPS = ['Details', 'Verify', 'Review'] as const;
 
@@ -66,6 +75,9 @@ export default function JoinScreen() {
   const [password, setPassword] = useState('');
   const [planId, setPlanId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
+  // WS-8: every box starts unchecked. Marketing is separate and optional.
+  const [consent, setConsent] = useState<ConsentChoiceState>({ ...INITIAL_JOIN_CONSENT });
+  const consentComplete = isJoinConsentComplete(consent);
 
   // Verification state (step 1) — real challenges from the provider.
   const [phoneChallenge, setPhoneChallenge] = useState<AuthChallenge | null>(null);
@@ -185,9 +197,25 @@ export default function JoinScreen() {
 
   const submit = useCallback(async () => {
     if (submitting) return;
+    if (!isJoinConsentComplete(consent)) {
+      setSubmitError('Accept the Privacy Policy and the Terms of Service before creating your account.');
+      return;
+    }
     setSubmitError(null);
     setSubmitting(true);
     if (provider.mode === 'live') {
+      // WS-8: record the acknowledgements first. If the server cannot bind
+      // them to the signed-in account, do not create the join application.
+      const consentResult = await recordConsents(buildJoinConsentEvents(consent));
+      if (!consentResult.ok) {
+        setSubmitError(
+          consentResult.recorded > 0
+            ? `Only ${consentResult.recorded} of 3 acknowledgements could be recorded, so the account was not created. ${consentResult.error}`
+            : `Your acceptance could not be recorded, so the account was not created. ${consentResult.error}`,
+        );
+        setSubmitting(false);
+        return;
+      }
       const result = await submitJoinApplication(
         fullName.trim(),
         phone.trim(),
@@ -202,6 +230,8 @@ export default function JoinScreen() {
       setSubmitting(false);
       return;
     }
+    // Demo provider: nothing is delivered or stored, so no consent record is
+    // created and the screen says so instead of claiming one.
     const result = await provider.signUpMember({
       fullName,
       phone: phone.trim(),
@@ -225,7 +255,7 @@ export default function JoinScreen() {
       setSubmitError('Some details could not be used. Re-check the highlighted fields.');
     }
     setSubmitting(false);
-  }, [submitting, provider, fullName, phone, email, password, planId, verifiedPhone, verifiedEmail]);
+  }, [submitting, provider, fullName, phone, email, password, planId, verifiedPhone, verifiedEmail, consent]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.authTop, paddingTop: insets.top }}>
@@ -535,10 +565,52 @@ export default function JoinScreen() {
                   <ReviewLine label="Email check" value={verifiedEmail ? 'Verified' : 'Not verified yet'} />
                 </View>
               </AuthCard>
+
+              {/* WS-8 — explicit acknowledgements. Nothing is preselected. */}
+              <AuthCard>
+                <AppText variant="heading" style={{ color: colors.authInk }}>
+                  Your choices
+                </AppText>
+                <AppText variant="caption" style={{ color: colors.authInkMuted, marginTop: spacing['3xs'] }}>
+                  Mandatory documents are required to create an account. Marketing is separate and optional.
+                </AppText>
+                <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+                  <ConsentCheckbox
+                    tone="auth"
+                    checked={consent.privacyPolicy}
+                    onChange={(next) => setConsent((current) => ({ ...current, privacyPolicy: next }))}
+                    label="I accept the Privacy Policy."
+                    description="Required to create an account."
+                    links={<LegalLink doc="privacy" label="Read Privacy Policy" tone="auth" />}
+                  />
+                  <ConsentCheckbox
+                    tone="auth"
+                    checked={consent.termsOfService}
+                    onChange={(next) => setConsent((current) => ({ ...current, termsOfService: next }))}
+                    label="I accept the Terms of Service."
+                    description="Required to create an account."
+                    links={<LegalLink doc="terms" label="Read Terms of Service" tone="auth" />}
+                  />
+                  <ConsentCheckbox
+                    tone="auth"
+                    checked={consent.marketing}
+                    onChange={(next) => setConsent((current) => ({ ...current, marketing: next }))}
+                    label="Send me optional gym marketing messages."
+                    description="Optional. Not required for membership. You can change this later in Privacy & data."
+                  />
+                </View>
+                <AppText variant="caption" style={{ color: colors.authInkSubtle, marginTop: spacing.xs }}>
+                  {provider.mode === 'live'
+                    ? 'When you continue, the accepted document versions are recorded against your signed-in account. No consent is recorded for a document you did not accept.'
+                    : 'Demo provider: this acceptance is not recorded anywhere because no server is connected. In live mode it is stored against your account with the document version.'}
+                </AppText>
+              </AuthCard>
+
               <Well>
                 <AppText variant="caption" tone="muted">
-                  Submitting creates the account on the demo provider. Membership activates only after full payment is
-                  verified at the desk (Parts 3-4 connect payments).
+                  {provider.mode === 'live'
+                    ? 'Submitting sends your join application to the gym. Membership activates only after the reception desk verifies full payment.'
+                    : 'Submitting creates the account on the demo provider. Membership activates only after full payment is verified at the desk (Parts 3-4 connect payments).'}
                 </AppText>
               </Well>
               {submitError && <AuthErrorMessage message={submitError} />}
@@ -547,13 +619,14 @@ export default function JoinScreen() {
                 icon={submitting ? undefined : 'person-add-outline'}
                 fullWidth
                 loading={submitting}
-                disabled={submitting}
+                disabled={submitting || !consentComplete}
                 variant="primarySoft"
                 onPress={() => void submit()}
               />
               <AppText variant="caption" style={{ color: colors.authInkSubtle }} align="center">
-                Unverified accounts can be created, but sign-in asks for the outstanding checks — nothing skips
-                verification.
+                {consentComplete
+                  ? 'Unverified accounts can be created, but sign-in asks for the outstanding checks — nothing skips verification.'
+                  : 'Accept the Privacy Policy and Terms of Service to enable account creation.'}
               </AppText>
             </RiseIn>
           )}
