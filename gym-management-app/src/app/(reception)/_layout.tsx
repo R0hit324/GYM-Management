@@ -26,6 +26,7 @@ export default function ReceptionLayout() {
       }}>
       <Stack.Screen name="home" />
       <Stack.Screen name="members" />
+      <Stack.Screen name="applications" />
       <Stack.Screen name="more" />
       <Stack.Screen name="attendance" />
       <Stack.Screen name="door-qr" />

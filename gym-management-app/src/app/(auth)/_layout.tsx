@@ -14,6 +14,7 @@ export default function AuthLayout() {
       <Stack.Screen name="join" />
       <Stack.Screen name="verify" />
       <Stack.Screen name="mfa" />
+      <Stack.Screen name="mfa-enroll" />
       <Stack.Screen name="forgot-password" />
       <Stack.Screen name="success" />
     </Stack>

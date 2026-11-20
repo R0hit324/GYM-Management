@@ -163,6 +163,8 @@ export default function OwnerDashboardScreen() {
       title: 'Registration requests',
       statusLabel: `${pendingApplications}`,
       description: 'Member applications completed online are waiting for review.',
+      href: '/(owner)/applications',
+      hrefLabel: 'Join applications, open the read-only queue',
     },
     {
       key: 'lost',
@@ -356,7 +358,8 @@ export default function OwnerDashboardScreen() {
           </View>
         )}
         <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.sm }}>
-          Push notifications and reminders arrive with the backend in Part 2.
+          Push, SMS and email delivery are not configured (no provider credentials or consent
+          records); this sheet lists only real in-app attention items.
         </AppText>
       </ModalSheet>
     </View>

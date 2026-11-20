@@ -29,6 +29,8 @@
  */
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { resolveLocalStack } from './local-stack.mjs';
 
@@ -559,6 +561,25 @@ commit;
   const ownerAudit = await select('/rest/v1/audit_log_entries?select=id,action,table_name', owner.token);
   check('owner can read the audit trail', ownerAudit.ok, `HTTP ${ownerAudit.status}`);
 
+  // -- Route registration checks (static, source-of-truth) -----------------
+  section('Route registration checks');
+  const readSource = (rel) => readFileSync(resolve(process.cwd(), rel), 'utf8');
+  const memberLayoutSource = readSource('src/app/(member)/_layout.tsx');
+  check('member layout registers the payments route', /name="payments"/.test(memberLayoutSource));
+  const ownerLayoutSource = readSource('src/app/(owner)/_layout.tsx');
+  for (const route of ['more', 'applications', 'plans', 'settings', 'audit']) {
+    check(
+      `owner layout registers /${route}`,
+      new RegExp(`<Stack\\.Screen name="${route}"`).test(ownerLayoutSource),
+      ownerLayoutSource.includes(`<Stack.Screen name="${route}"`) ? 'registered' : 'MISSING',
+    );
+  }
+  const receptionLayoutSource = readSource('src/app/(reception)/_layout.tsx');
+  check(
+    'reception layout registers the applications route',
+    /name="applications"/.test(receptionLayoutSource),
+  );
+
   // -- Cross-role negative checks ------------------------------------------
   section('Negative checks');
   const memberAudit = await select('/rest/v1/audit_log_entries?select=id', memberA.token);
@@ -573,6 +594,26 @@ commit;
     'member reads no application that is not theirs',
     memberApplications.ok && memberApplications.data.length === 0,
     `rows=${memberApplications.data?.length}`,
+  );
+
+  const memberBPayments = await select(
+    `/rest/v1/payments?select=${PAYMENT_COLUMNS}&member_id=eq.${memberBId}`,
+    memberA.token,
+  );
+  check(
+    'member cannot read another member’s payment rows via member_id filter',
+    memberBPayments.ok && memberBPayments.data.length === 0,
+    `rows=${memberBPayments.data?.length}`,
+  );
+
+  const memberAWildMemberId = await select(
+    '/rest/v1/payments?select=id&member_id=eq.00000000-0000-0000-0000-000000000000',
+    memberA.token,
+  );
+  check(
+    'member cannot read rows filtered to a member id that is not linked to them',
+    memberAWildMemberId.ok && memberAWildMemberId.data.length === 0,
+    `rows=${memberAWildMemberId.data?.length}`,
   );
 
   const anonStatus = await call(`/rest/v1/v_member_status?select=member_id`, {

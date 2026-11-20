@@ -414,6 +414,13 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# WS-5: trusted staff administration. The platform verifies the caller's
+# JWT before invocation; the function then re-checks an active owner profile
+# and the database functions require owner + AAL2. It holds the service-role
+# key server-side only — the Expo app never receives or reads it.
+[functions.staff-admin]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

@@ -14,6 +14,8 @@ export interface MembershipPlan {
   duration: PlanDuration;
   price: number; // display-only in Part 1; prices are server-authoritative later
   currency: string;
+  /** Live rows: false once the owner deactivates the plan. Demo rows omit it. */
+  isActive?: boolean;
   /** Demo-labelled plan description lines (additive, Part 1 demo content). */
   highlights?: string[];
 }
@@ -69,6 +71,8 @@ export interface PaymentRecord {
   utr?: string;
   state: PaymentState;
   receiptIssued: boolean;
+  /** Private Storage object path once a PDF receipt has been stored. */
+  receiptPath?: string;
   createdAt: string;
   verifiedBy?: string;
   note?: string;
@@ -80,6 +84,16 @@ export interface PaymentRecord {
   recordedBy?: string;
   verifiedById?: string;
   verifiedAt?: string;
+}
+
+/** One in-app notification derived from rows the session may already read. */
+export interface InAppNotification {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+  tone: 'warning' | 'info' | 'danger' | 'success';
+  count: number;
 }
 
 export type FreezeState = 'pending' | 'approved' | 'rejected' | 'ended';
@@ -113,6 +127,33 @@ export interface GymSettings {
 
 export type ApplicationState = 'draft' | 'pendingVerification' | 'submitted' | 'approved' | 'rejected';
 
+/** One applied membership term, read from `membership_periods` (never edited). */
+export interface MembershipPeriodRecord {
+  id: string;
+  planId: string;
+  planName: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  priceApplied: number;
+  createdAt: string;
+}
+
+/**
+ * One append-only audit row. `oldValues`/`newValues` are the raw JSON the
+ * server recorded; screens show a short summary and never invent a value.
+ */
+export interface AuditLogEntry {
+  id: string;
+  actorId: string | null;
+  actorRole: string | null;
+  action: string;
+  tableName: string;
+  rowId: string | null;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  at: string;
+}
+
 export interface JoinApplication {
   id: string;
   fullName: string;
@@ -123,6 +164,22 @@ export interface JoinApplication {
   phoneVerified: boolean;
   emailVerified: boolean;
   createdAt: string;
+}
+
+/**
+ * A staff account as returned by the owner-only `admin_staff_directory()`
+ * function. Roles are limited to the two staff roles; an inactive account
+ * is denied by the database on its next request.
+ */
+export interface StaffAccount {
+  userId: string;
+  displayName: string;
+  role: 'owner' | 'receptionist';
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  createdAt: string;
+  lastSignInAt: string | null;
 }
 
 export interface DailyReportNumbers {

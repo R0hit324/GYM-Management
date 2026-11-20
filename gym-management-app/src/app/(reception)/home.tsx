@@ -25,6 +25,7 @@ import { StatRow } from '@/components/ui/stat-tile';
 import { ActionGrid, ActionTile } from '@/components/ui/action-tile';
 import { RiseIn } from '@/components/ui/rise-in';
 import { SignOut } from '@/components/workspace-meta';
+import { ReceptionNotificationBell } from '@/components/notifications/notification-bell';
 import {
   WorkspaceScreen,
   WorkspaceBottomNavigation,
@@ -179,7 +180,12 @@ export default function ReceptionHomeScreen() {
         eyebrow="Reception desk"
         subtitle="Today at a glance"
         demo={!live}
-        actions={<SignOut />}
+        actions={
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <ReceptionNotificationBell />
+            <SignOut />
+          </View>
+        }
         refreshControl={<DataRefreshControl refreshing={liveLoading} onRefresh={refreshAll} />}>
         {hasError && (
           <RiseIn>
@@ -316,7 +322,7 @@ export default function ReceptionHomeScreen() {
                     icon="hourglass-outline"
                     tone={colors.ownerWarningDeep}
                     title={`${pluralise(metrics.pendingCount, 'payment', 'payments')} awaiting verification`}
-                    detail={`${formatCurrency(metrics.pendingAmount)} recorded — not revenue until the Owner verifies`}
+                    detail={`${formatCurrency(metrics.pendingAmount)} recorded — not revenue until a different receptionist verifies`}
                     onPress={() => router.navigate('/(reception)/transaction-history' as never)}
                   />
                 )}

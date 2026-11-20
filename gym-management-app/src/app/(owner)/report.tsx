@@ -5,12 +5,16 @@
  * Daily/monthly ledger: collections (UPI/cash, verification-queue exclusion),
  * membership KPIs, adjustments audit trail, "Attention today" list.
  * Demo mode shows the approved sample ledger; live mode reads v_daily_report,
- * v_month_revenue, payments, v_member_status and join_applications. Period
- * series charts have no backend source yet and are omitted in live mode
- * rather than filled with invented points.
+ * v_month_revenue, payments, v_member_status and join_applications. Live mode
+ * builds period series from the bounded range reads — verified check-ins per
+ * local day for the attendance trend, verified net collections per day/week
+ * for the collections trend — so charts render only from real rows. The demo
+ * keeps its approved sample series. The current view's rows can be exported as
+ * CSV text through the platform share sheet, with explicit confirmation and a
+ * row cap; no PDF or Excel output is produced in this stage.
  */
-import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Share, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppText } from '@/components/ui/text';
@@ -20,6 +24,7 @@ import { RiseIn } from '@/components/ui/rise-in';
 import { CountUp } from '@/components/ui/motion';
 import { LineChart, attendanceLineColors } from '@/components/charts/line-chart';
 import { BarChart } from '@/components/charts/bar-chart';
+import { Button } from '@/components/ui/button';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import {
   OwnerScreen,
@@ -39,20 +44,19 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
+import { demoOwnershipReport, demoAttendanceTrend, demoCollectionsTrend } from '@/data/demo';
 import {
-  demoOwnershipReport,
-  demoAttendanceTrend,
-  demoCollectionsTrend,
-} from '@/data/demo';
-import {
+  useAttendanceInRange,
   useDailyReport,
   useMembers,
   useMonthlyRevenue,
   usePayments,
+  usePaymentsInRange,
   usePendingApplications,
 } from '@/services/data';
 import { displayMembershipStatus } from '@/utils/membership';
 import { formatCurrency, isSameLocalDay } from '@/utils/format';
+import type { AttendanceEvent, PaymentRecord, TrendPoint } from '@/types/domain';
 
 /** Deltas are computed from the demo trends — never asserted. */
 type StatDelta = { label: string; direction: 'up' | 'down' };
@@ -66,12 +70,68 @@ function percentDelta(now: number, before: number, unit: string): StatDelta | un
   };
 }
 
+/** Local-calendar-day start (`YYYY-MM-DDTHH:MM:SS`) for half-open range bounds. */
+function dayStartIso(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}T00:00:00`;
+}
+
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Local calendar-day key (`YYYY-M-D` by local parts, never UTC-shifted). */
+function dayKeyOf(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function trendPoint(date: Date, value: number, label = WEEKDAY_SHORT[date.getDay()]): TrendPoint {
+  return {
+    label,
+    fullLabel: `${WEEKDAY_SHORT[date.getDay()]}, ${date.getDate()} ${MONTH_SHORT[date.getMonth()]} ${date.getFullYear()}`,
+    value,
+  };
+}
+
+/** Verified net collections (a reversal subtracts) keyed by local day. */
+function verifiedSumsFor(payments: PaymentRecord[]): Map<string, number> {
+  const sums = new Map<string, number>();
+  for (const payment of payments) {
+    if (payment.state !== 'verified') continue;
+    const d = new Date(payment.createdAt);
+    const key = dayKeyOf(d);
+    const signed = payment.entryType === 'reversal' ? -payment.payable : payment.payable;
+    sums.set(key, (sums.get(key) ?? 0) + signed);
+  }
+  return sums;
+}
+
+/** Verified check-in count for one local calendar day. */
+function countByDay(events: AttendanceEvent[], day: Date): number {
+  const key = dayKeyOf(day);
+  let n = 0;
+  for (const event of events) {
+    if (event.status !== 'verified') continue;
+    if (dayKeyOf(new Date(event.checkedInAt)) !== key) continue;
+    n += 1;
+  }
+  return n;
+}
+
+/** Cap for the CSV export so the share payload stays a review, not a bulk dump. */
+const EXPORT_ROW_CAP = 500;
+
 export default function OwnerReportScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
 
   const [report, setReport] = useState<'daily' | 'monthly'>('daily');
   const [explainOpen, setExplainOpen] = useState<string | null>(null);
+  const [rangeDays, setRangeDays] = useState<number>(7);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   const dailyResource = useDailyReport();
   const monthlyResource = useMonthlyRevenue();
@@ -103,6 +163,68 @@ export default function OwnerReportScreen() {
     membersResource.refresh();
     applicationsResource.refresh();
   };
+
+  // Stage 8 — live period windows: the selected window (last `rangeDays`
+  // days) and the immediately previous window of the same length, both as
+  // half-open [from, to) local-day ranges for the bounded reads.
+  const rangeWindow = useMemo(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - (rangeDays - 1));
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + rangeDays);
+    return {
+      start,
+      days: Array.from(
+        { length: rangeDays },
+        (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
+      ),
+      from: dayStartIso(start),
+      to: dayStartIso(end),
+    };
+  }, [rangeDays]);
+
+  const previousWindow = useMemo(() => {
+    const start = new Date(rangeWindow.start);
+    start.setDate(start.getDate() - rangeDays);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + rangeDays);
+    return {
+      start,
+      days: Array.from(
+        { length: rangeDays },
+        (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
+      ),
+      from: dayStartIso(start),
+      to: dayStartIso(end),
+    };
+  }, [rangeWindow, rangeDays]);
+
+  const rangePaymentsResource = usePaymentsInRange(rangeWindow.from, rangeWindow.to);
+  const rangeAttendanceResource = useAttendanceInRange(rangeWindow.from, rangeWindow.to);
+  const previousPaymentsResource = usePaymentsInRange(previousWindow.from, previousWindow.to);
+  const previousAttendanceResource = useAttendanceInRange(previousWindow.from, previousWindow.to);
+  const rangePayments = useMemo<PaymentRecord[]>(() => (live ? rangePaymentsResource.data : []), [live, rangePaymentsResource.data]);
+  const previousPayments = useMemo<PaymentRecord[]>(() => (live ? previousPaymentsResource.data : []), [live, previousPaymentsResource.data]);
+  const rangeAttendance = useMemo<AttendanceEvent[]>(() => (live ? rangeAttendanceResource.data : []), [live, rangeAttendanceResource.data]);
+  const previousAttendance = useMemo<AttendanceEvent[]>(() => (live ? previousAttendanceResource.data : []), [live, previousAttendanceResource.data]);
+
+  // Verified net collections per local day for the current and previous windows.
+  const verifiedSums = useMemo(() => verifiedSumsFor(rangePayments), [rangePayments]);
+  const previousVerifiedSums = useMemo(() => verifiedSumsFor(previousPayments), [previousPayments]);
+  const daySum = useCallback(
+    (d: Date) => Math.round(verifiedSums.get(dayKeyOf(d)) ?? 0),
+    [verifiedSums],
+  );
+  const previousDaySum = useCallback(
+    (d: Date) => Math.round(previousVerifiedSums.get(dayKeyOf(d)) ?? 0),
+    [previousVerifiedSums],
+  );
+  const collectionsWindowTotal = useMemo(
+    () => rangeWindow.days.reduce((sum, d) => sum + daySum(d), 0),
+    [rangeWindow, daySum],
+  );
+  const previousCollectionsWindowTotal = useMemo(
+    () => previousWindow.days.reduce((sum, d) => sum + previousDaySum(d), 0),
+    [previousWindow, previousDaySum],
+  );
 
   // Period payments: today for the daily ledger, the current month for the
   // monthly ledger. Demo mode keeps its approved sample splits below.
@@ -147,19 +269,110 @@ export default function OwnerReportScreen() {
     .filter((m) => displayMembershipStatus(m) === 'expiring')
     .slice(0, 2);
 
-  // Measured deltas, from the demo trends: collections week-over-week, and
-  // the week's attendance shape (last day vs first). Live mode has no
-  // period-series source, so the charts are omitted instead of invented.
-  const collectionsDelta = percentDelta(
-    demoCollectionsTrend[demoCollectionsTrend.length - 1]?.value ?? 0,
-    demoCollectionsTrend[demoCollectionsTrend.length - 2]?.value ?? 0,
-    'WoW',
-  );
-  const attendanceDelta = percentDelta(
-    demoAttendanceTrend[demoAttendanceTrend.length - 1]?.value ?? 0,
-    demoAttendanceTrend[0]?.value ?? 0,
-    'in week',
-  );
+  // Measured deltas. Demo mode keeps reading the approved sample trends;
+  // live mode compares the selected window with the previous window of the
+  // same length, both from real bounded reads.
+  const collectionsDelta = useMemo<StatDelta | undefined>(() => {
+    if (live) return percentDelta(collectionsWindowTotal, previousCollectionsWindowTotal, 'WoW');
+    const last = demoCollectionsTrend[demoCollectionsTrend.length - 1]?.value ?? 0;
+    const before = demoCollectionsTrend[demoCollectionsTrend.length - 2]?.value ?? 0;
+    return percentDelta(last, before, 'WoW');
+  }, [live, collectionsWindowTotal, previousCollectionsWindowTotal]);
+
+  const attendanceDelta = useMemo<StatDelta | undefined>(() => {
+    if (live) {
+      const lastDay = rangeWindow.days[rangeWindow.days.length - 1];
+      const previousLastDay = previousWindow.days[previousWindow.days.length - 1];
+      const now = countByDay(rangeAttendance, lastDay);
+      const before = countByDay(previousAttendance, previousLastDay);
+      return percentDelta(now, before, 'in window');
+    }
+    const last = demoAttendanceTrend[demoAttendanceTrend.length - 1]?.value ?? 0;
+    const before = demoAttendanceTrend[0]?.value ?? 0;
+    return percentDelta(last, before, 'in week');
+  }, [live, rangeWindow, previousWindow, rangeAttendance, previousAttendance]);
+
+  // Live period series: one point per local day of the selected window.
+  const attendancePoints = useMemo<TrendPoint[]>(() => {
+    if (!live) return demoAttendanceTrend;
+    const points: TrendPoint[] = [];
+    for (const d of rangeWindow.days) {
+      points.push(trendPoint(d, countByDay(rangeAttendance, d)));
+    }
+    return points;
+  }, [live, rangeWindow, rangeAttendance]);
+
+  // Live collections series: per day when the window is a week, per Mon-start
+  // week when it is longer. Only verified (net of reversals) rows feed it.
+  const collectionsPoints = useMemo<TrendPoint[]>(() => {
+    if (!live) return demoCollectionsTrend;
+    const points: TrendPoint[] = [];
+    if (rangeDays <= 7) {
+      for (const d of rangeWindow.days) {
+        points.push(trendPoint(d, daySum(d)));
+      }
+    } else {
+      const weeks = new Map<string, { start: Date; total: number }>();
+      for (const d of rangeWindow.days) {
+        const weekStartOffset = (d.getDay() + 6) % 7;
+        const ws = new Date(d.getFullYear(), d.getMonth(), d.getDate() - weekStartOffset);
+        const weekKey = dayKeyOf(ws);
+        const bucket = weeks.get(weekKey) ?? { start: ws, total: 0 };
+        bucket.total += daySum(d);
+        weeks.set(weekKey, bucket);
+      }
+      const sorted = [...weeks.values()].sort((a, b) => a.start.getTime() - b.start.getTime());
+      for (const week of sorted) {
+        points.push(
+          trendPoint(week.start, week.total, `${WEEKDAY_SHORT[week.start.getDay()]} ${week.start.getDate()}`),
+        );
+      }
+    }
+    return points;
+  }, [live, rangeWindow, rangeDays, daySum]);
+
+  // Stage 8 — export: the current view's rows as CSV text (capped), then
+  // shared through the platform share sheet after explicit confirmation.
+  const exportRows = live ? rangePayments : periodPayments;
+  const exportableRows = exportRows.slice(0, EXPORT_ROW_CAP);
+  const exportCsv = (): string => {
+    const lines = [['Date', 'Member', 'Type', 'Method', 'Amount', 'UTR', 'State', 'Receipt issued'].join(',')];
+    for (const payment of exportableRows) {
+      const d = new Date(payment.createdAt);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const type = payment.entryType === 'reversal' ? 'reversal' : 'payment';
+      const cells = [
+        dateStr,
+        payment.memberName,
+        type,
+        payment.method,
+        String(Math.round(payment.payable)),
+        payment.utr ?? '',
+        payment.state,
+        payment.receiptIssued ? 'yes' : 'no',
+      ];
+      lines.push(
+        cells
+          .map((cell) => (/[",\n\r]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell))
+          .join(','),
+      );
+    }
+    return lines.join('\n');
+  };
+
+  const confirmExport = async () => {
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      await Share.share({ message: exportCsv() });
+      setExportOpen(false);
+      setExportNotice(`Exported ${exportableRows.length} rows as CSV text through the device share sheet.`);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'The export could not be shared.');
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -204,10 +417,39 @@ export default function OwnerReportScreen() {
           <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs, fontWeight: '500' }}>
             {report === 'daily' ? 'Showing today’s verified ledger' : 'Showing the full month’s ledger'}
           </AppText>
+          {live && (
+            <View style={{ marginTop: spacing.xs }}>
+              <SegmentedTabs
+                variant="owner"
+                size="small"
+                options={[
+                  { value: '7', label: '7 days' },
+                  { value: '30', label: '30 days' },
+                  { value: '90', label: '90 days' },
+                ]}
+                value={String(rangeDays)}
+                onChange={(v) => setRangeDays(Number(v))}
+              />
+              <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                Trend windows compare the selected period with the previous period of the same length; the ledger totals above stay on the Daily/Monthly view.
+              </AppText>
+            </View>
+          )}
         </RiseIn>
 
         <RiseIn index={1}>
-          <OwnerSection title="Collections" style={{ marginTop: spacing.md }}>
+          <OwnerSection
+            title="Collections"
+            style={{ marginTop: spacing.md }}
+            action={
+              <Button
+                label="Export CSV"
+                icon="download-outline"
+                size="small"
+                variant="secondary"
+                onPress={() => setExportOpen(true)}
+              />
+            }>
             <OwnerCard>
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -273,43 +515,55 @@ export default function OwnerReportScreen() {
           </OwnerSection>
         </RiseIn>
 
-        {live ? (
-          <RiseIn index={3}>
-            <OwnerSection style={{ marginTop: spacing.md }}>
-              <OwnerWell>
-                <AppText variant="caption" style={{ color: colors.ownerInk }}>
-                  Period series charts are not part of the current read-only backend views, so they are omitted in live mode instead of showing sample points. The verified ledger above is real for the selected period.
-                </AppText>
-              </OwnerWell>
-            </OwnerSection>
-          </RiseIn>
-        ) : (
-          <>
-            <RiseIn index={3}>
-              <OwnerSection style={{ marginTop: spacing.md }}>
+        <RiseIn index={3}>
+          <OwnerSection style={{ marginTop: spacing.md }}>
+            {live ? (
+              <>
+                <OwnerChartCard
+                  title={`Attendance, last ${rangeDays} days`}
+                  delta={attendanceDelta ?? undefined}
+                  caption="Verified check-ins per local day, from the selected window">
+                  <LineChart points={attendancePoints} {...attendanceLineColors(colors)} />
+                </OwnerChartCard>
+                <View style={{ marginTop: spacing.sm }}>
+                  <OwnerChartCard
+                    title={`Collections, last ${rangeDays} days`}
+                    delta={collectionsDelta ?? undefined}
+                    caption="Verified net collections (reversals subtracted), from the selected window">
+                    <BarChart
+                      points={collectionsPoints}
+                      accent={colors.ownerAccentDeep}
+                      valueColor={colors.ownerInk}
+                      labelColor={colors.ownerInkMuted}
+                      gridColor={colors.ownerRule}
+                      captionColor={colors.ownerInk}
+                      subCaptionColor={colors.ownerInkSubtle}
+                    />
+                  </OwnerChartCard>
+                </View>
+              </>
+            ) : (
+              <>
                 <OwnerChartCard title="Attendance, last 7 days" delta={attendanceDelta ? { label: attendanceDelta.label, direction: attendanceDelta.direction } : undefined}>
                   <LineChart points={demoAttendanceTrend} {...attendanceLineColors(colors)} />
                 </OwnerChartCard>
-              </OwnerSection>
-            </RiseIn>
-
-            <RiseIn index={4}>
-              <OwnerSection style={{ marginTop: spacing.md }}>
-                <OwnerChartCard title="Collections by week" delta={collectionsDelta ? { label: collectionsDelta.label, direction: collectionsDelta.direction } : undefined}>
-                  <BarChart
-                    points={demoCollectionsTrend}
-                    accent={colors.ownerAccentDeep}
-                    valueColor={colors.ownerInk}
-                    labelColor={colors.ownerInkMuted}
-                    gridColor={colors.ownerRule}
-                    captionColor={colors.ownerInk}
-                    subCaptionColor={colors.ownerInkSubtle}
-                  />
-                </OwnerChartCard>
-              </OwnerSection>
-            </RiseIn>
-          </>
-        )}
+                <View style={{ marginTop: spacing.sm }}>
+                  <OwnerChartCard title="Collections by week" delta={collectionsDelta ? { label: collectionsDelta.label, direction: collectionsDelta.direction } : undefined}>
+                    <BarChart
+                      points={demoCollectionsTrend}
+                      accent={colors.ownerAccentDeep}
+                      valueColor={colors.ownerInk}
+                      labelColor={colors.ownerInkMuted}
+                      gridColor={colors.ownerRule}
+                      captionColor={colors.ownerInk}
+                      subCaptionColor={colors.ownerInkSubtle}
+                    />
+                  </OwnerChartCard>
+                </View>
+              </>
+            )}
+          </OwnerSection>
+        </RiseIn>
 
         <RiseIn index={5}>
           <OwnerSection title="Adjustments, with their audit trail">
@@ -396,6 +650,41 @@ export default function OwnerReportScreen() {
           <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs }}>
             Staff and members cannot edit audit records; even the owner reads them rather than touches them.
           </AppText>
+        </ModalSheet>
+
+        <ModalSheet
+          visible={exportOpen}
+          onClose={() => {
+            if (!exportBusy) setExportOpen(false);
+          }}
+          title="Export report rows"
+          subtitle="Current view · CSV text">
+          <AppText variant="body" style={{ color: colors.ownerInk }}>
+            The export is CSV text built from the rows in this report view — date, member, type, method, amount, UTR, state and the receipt flag. Nothing is uploaded automatically; the text is handed to the device share sheet only after you confirm.
+          </AppText>
+          <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs }}>
+            {exportRows.length} {exportRows.length === 1 ? 'row' : 'rows'} in the current view
+            {exportRows.length > EXPORT_ROW_CAP ? ` · capped at ${EXPORT_ROW_CAP} rows for this export` : ''}. Credentials, raw JSON payloads and rows outside the selected scope are never included.
+          </AppText>
+          {exportError ? (
+            <AppText variant="caption" style={{ color: colors.dangerStrong, marginTop: spacing.xs }}>
+              The export failed: {exportError}
+            </AppText>
+          ) : null}
+          {exportNotice ? (
+            <AppText variant="caption" style={{ color: colors.ownerSuccessDeep, marginTop: spacing.xs }}>
+              {exportNotice}
+            </AppText>
+          ) : null}
+          <View style={{ height: spacing.xs }} />
+          <Button
+            label={exportBusy ? 'Preparing…' : 'Export CSV'}
+            fullWidth
+            disabled={exportBusy}
+            onPress={() => void confirmExport()}
+          />
+          <View style={{ height: spacing.xs }} />
+          <Button label="Cancel" variant="secondary" fullWidth disabled={exportBusy} onPress={() => setExportOpen(false)} />
         </ModalSheet>
 
         <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.lg }} align="center">

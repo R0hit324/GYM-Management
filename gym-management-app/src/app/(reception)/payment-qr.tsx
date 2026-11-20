@@ -48,6 +48,8 @@ import { demoGymName, demoGymUpiId } from '@/data/demo';
 import { useSessionQrConfig, updateSessionQrConfig, resetSessionQrConfig } from '@/data/session';
 import { buildUpiPayload, isValidUpiId } from '@/utils/upi';
 import { useAuth } from '@/services/auth';
+import { useGymSettings } from '@/services/data';
+import { DataRefreshControl, ErrorState } from '@/components/ui/feedback';
 
 /** Accepted QR image formats and the size ceiling (5 MB). */
 const QR_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
@@ -66,9 +68,13 @@ export default function PaymentQrScreen() {
   const live = provider.mode === 'live';
 
   const qrConfig = useSessionQrConfig();
-  const upiId = qrConfig.upiId;
-  const customImageUri = qrConfig.customImageUri;
-  const configIsDefault = upiId === demoGymUpiId && customImageUri === null;
+  const settingsResource = useGymSettings();
+  // Live mode reads the owner-configured UPI ID from app_settings; the
+  // session store is only ever a demo fallback, never a live source.
+  const settingsLoading = live && settingsResource.status === 'loading';
+  const upiId = live ? (settingsResource.data?.upiId ?? '') : qrConfig.upiId;
+  const customImageUri = live ? null : qrConfig.customImageUri;
+  const configIsDefault = !live && upiId === demoGymUpiId && customImageUri === null;
 
   // QR image replacement flow: pick → validate → preview → explicit
   // confirm. Cancellation is a no-op; nothing is assumed valid.
@@ -176,7 +182,7 @@ export default function PaymentQrScreen() {
   // member amount is encoded here. The Collect Payment flow shows a code
   // carrying the selected member's payable amount when used there.
   const qrPayload = buildUpiPayload(upiId);
-  const upiEdited = upiId !== demoGymUpiId;
+  const upiEdited = !live && upiId !== demoGymUpiId;
 
   return (
     <View style={{ flex: 1 }}>
@@ -185,7 +191,25 @@ export default function PaymentQrScreen() {
         eyebrow="Payments"
         subtitle={live ? 'The gym\'s UPI code (owner-configured)' : 'The gym\'s UPI code and its configuration'}
         demo={!live}
-        actions={<SignOut />}>
+        actions={<SignOut />}
+        refreshControl={
+          live ? (
+            <DataRefreshControl
+              refreshing={settingsLoading}
+              onRefresh={settingsResource.refresh}
+            />
+          ) : undefined
+        }>
+        {live && settingsResource.status === 'error' && (
+          <RiseIn>
+            <ErrorState
+              title="Gym settings could not load"
+              message={settingsResource.error ?? 'The configured UPI ID is unavailable right now.'}
+              onRetry={settingsResource.refresh}
+              style={{ marginBottom: spacing.sm }}
+            />
+          </RiseIn>
+        )}
         {/* Gym UPI QR configuration — display, replace, UPI ID edit. Session
             only; the UPI ID is a public payment address, never a secret.
             In live mode, UPI/QR configuration is owner-only via update_gym_settings RPC. */}
@@ -201,13 +225,17 @@ export default function PaymentQrScreen() {
                     {demoGymName}
                   </AppText>
                   <AppText variant="caption" numberOfLines={1} style={{ color: colors.ownerInkMuted }}>
-                    UPI ID: {upiId}
+                    UPI ID: {upiId || 'not configured'}
                   </AppText>
                 </View>
               </View>
               <WorkspaceRowDivider />
               <View style={{ marginTop: spacing.sm, alignItems: 'center' }}>
-                {customImageUri ? (
+                {settingsLoading ? (
+                  <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
+                    Loading the configured UPI ID…
+                  </AppText>
+                ) : customImageUri ? (
                   <View style={{ alignItems: 'center', gap: spacing.xs }}>
                     <View
                       style={{
@@ -236,7 +264,9 @@ export default function PaymentQrScreen() {
                   />
                 ) : (
                   <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-                    The gym&apos;s UPI ID is not configured, so no payment QR can be shown. Record the payment without the QR.
+                    {live
+                      ? 'The owner has not configured a UPI ID yet, so no payment QR can be shown. Record the payment without the QR.'
+                      : 'The gym\'s UPI ID is not configured, so no payment QR can be shown. Record the payment without the QR.'}
                   </AppText>
                 )}
                 {upiEdited && !customImageUri && (
@@ -276,7 +306,9 @@ export default function PaymentQrScreen() {
                 </AppText>
               )}
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
-                Configuration lives for this session only and resets when the app restarts — nothing is saved to a server or database. The attendance Door QR is a separate screen and is never touched from here.
+                {live
+                  ? 'The UPI ID is read from the gym settings saved by the owner; it changes here only after the owner saves a new one. The attendance Door QR is a separate screen and is never touched from here.'
+                  : 'Configuration lives for this session only and resets when the app restarts — nothing is saved to a server or database. The attendance Door QR is a separate screen and is never touched from here.'}
               </AppText>
             </WorkspaceCard>
           </WorkspaceSection>
@@ -292,7 +324,9 @@ export default function PaymentQrScreen() {
                 Collect a payment with this QR
               </AppText>
               <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs }}>
-                The guided flow — member, plan, discount, UPI or cash, review and record — lives on the Collect Payment screen. It shows a QR carrying the selected member&apos;s payable amount and records the UTR or cash entry into the same session store that Transaction History reads.
+                {live
+                  ? 'The guided flow — member, plan, discount, UPI or cash, review and record — lives on the Collect Payment screen. It shows a QR carrying the selected member\'s payable amount and records the UTR or cash entry as a pending server row; a different receptionist verifies it.'
+                  : 'The guided flow — member, plan, discount, UPI or cash, review and record — lives on the Collect Payment screen. It shows a QR carrying the selected member\'s payable amount and records the UTR or cash entry into the same session store that Transaction History reads.'}
               </AppText>
               <View style={{ marginTop: spacing.sm }}>
                 <Button label="Open Collect Payment" icon="cash-outline" onPress={() => router.push('/(reception)/fees' as never)} />

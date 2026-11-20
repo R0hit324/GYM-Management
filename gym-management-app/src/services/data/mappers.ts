@@ -8,29 +8,37 @@
  */
 import type {
   AttendanceEvent,
+  AuditLogEntry,
   DailyReportNumbers,
   FreezeRecord,
   GymSettings,
+  JoinApplication,
   Member,
+  MembershipPeriodRecord,
   MembershipPlan,
   MembershipStatus,
   PaymentRecord,
+  StaffAccount,
 } from '@/types/domain';
 import { memberDisplayId } from '@/utils/format';
 
 import type {
   AttendanceRow,
+  AuditLogRow,
   DailyReportRow,
   FollowUpRow,
   FreezeRow,
   GymSettingsRow,
   InactiveMemberRow,
+  JoinApplicationRow,
   MemberStatusRow,
+  MembershipPeriodRow,
   MonthRevenueRow,
   MonthlyRevenue,
   MonthRevenueSummary,
   PaymentRow,
   PlanRow,
+  StaffDirectoryRow,
 } from './rows';
 
 export interface FollowUpSummary {
@@ -216,6 +224,7 @@ export function toPayment(row: PaymentRow, memberName: string): PaymentRecord {
     utr: row.utr ?? undefined,
     state: row.state,
     receiptIssued: row.receipt_issued,
+    receiptPath: row.receipt_path ?? undefined,
     createdAt: row.recorded_at,
     note: row.note ?? undefined,
     entryType: row.entry_type,
@@ -273,5 +282,72 @@ export function toPlan(row: PlanRow): MembershipPlan {
     duration,
     price: row.price,
     currency: row.currency,
+    isActive: row.is_active,
+  };
+}
+
+/**
+ * Applied membership term. `planName` comes from the current plan row when it
+ * still exists; an archived/unresolvable plan keeps an honest empty label.
+ */
+export function toMembershipPeriod(row: MembershipPeriodRow, planName: string): MembershipPeriodRecord {
+  return {
+    id: row.id,
+    planId: row.plan_id,
+    planName: planName || 'Plan not on record',
+    startDate: row.start_date.slice(0, 10),
+    endDate: row.end_date.slice(0, 10),
+    priceApplied: row.price_applied,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * Join application exactly as stored. Verification flags are the staff's
+ * manual checks — the client never claims a phone/email was verified.
+ */
+export function toJoinApplication(row: JoinApplicationRow): JoinApplication {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email ?? '',
+    planId: row.plan_id ?? '',
+    state: row.state as JoinApplication['state'],
+    phoneVerified: row.phone_verified,
+    emailVerified: row.email_verified,
+    createdAt: row.created_at,
+  };
+}
+
+/** Append-only audit row; raw JSON is preserved, never reinterpreted. */
+export function toAuditEntry(row: AuditLogRow): AuditLogEntry {
+  return {
+    id: row.id,
+    actorId: row.actor,
+    actorRole: row.actor_role,
+    action: row.action,
+    tableName: row.table_name,
+    rowId: row.row_id,
+    oldValues: row.old_values ?? null,
+    newValues: row.new_values ?? null,
+    at: row.at,
+  };
+}
+
+/**
+ * Staff directory row. The role is narrowed by the database function; the
+ * mapper keeps the value as returned and never invents a third staff role.
+ */
+export function toStaffAccount(row: StaffDirectoryRow): StaffAccount {
+  return {
+    userId: row.user_id,
+    displayName: row.display_name,
+    role: row.role === 'owner' ? 'owner' : 'receptionist',
+    email: row.email,
+    phone: row.phone,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    lastSignInAt: row.last_sign_in_at,
   };
 }

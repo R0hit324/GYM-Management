@@ -90,10 +90,42 @@ export type SignInResult =
   | { status: 'ok'; pendingAuthId: string }
   /** Credentials valid — staff account must complete MFA. */
   | { status: 'mfa_required'; pendingAuthId: string; challenge: AuthChallenge }
+  /**
+   * Credentials valid — staff account has no verified TOTP factor yet.
+   * The aal1 session is held only long enough to enrol; nothing is
+   * authorised until the factor verifies and AAL2 is reached.
+   */
+  | { status: 'mfa_enrollment_required'; pendingAuthId: string; email: string }
   /** Credentials valid — account needs email/phone verification first. */
   | { status: 'verification_required'; pendingAuthId: string; missing: VerificationKind[] }
   | { status: 'rate_limited'; retryAfterSeconds: number }
   /** Wrong password, unknown account, or role mismatch. One coarse message. */
+  | { status: 'invalid' };
+
+/**
+ * A TOTP factor being enrolled. The secret/URI are shown once to the staff
+ * member inside the authenticated aal1 session; they are never stored by
+ * the app and never written to the database by the client.
+ */
+export interface MfaEnrollment {
+  factorId: string;
+  friendlyName: string;
+  secret: string;
+  /** otpauth:// URI for the authenticator QR code. */
+  uri: string;
+}
+
+export type MfaEnrollmentStart =
+  | { status: 'ready'; enrollment: MfaEnrollment }
+  /** A verified factor already exists — continue with the normal MFA challenge. */
+  | { status: 'already_enrolled' }
+  | { status: 'invalid' };
+
+export type MfaEnrollmentResult =
+  | { status: 'ok' }
+  | { status: 'invalid_code' }
+  | { status: 'expired' }
+  | { status: 'locked' }
   | { status: 'invalid' };
 
 export type SignUpResult =
@@ -147,6 +179,19 @@ export interface AuthProvider {
   verifyChallenge(challengeId: string, code: string): Promise<VerifyOutcome>;
   /** Staff MFA check against a pending sign-in's challenge. */
   verifyMfa(pendingAuthId: string, challengeId: string, code: string): Promise<VerifyOutcome>;
+  /**
+   * LIVE ONLY: start first-time TOTP enrolment for a staff pending sign-in.
+   * Optional because the demo provider already issues labelled demo codes
+   * and never enrols a real factor; a screen must not invent an enrolment
+   * when the provider cannot perform one.
+   */
+  startMfaEnrollment?(pendingAuthId: string): Promise<MfaEnrollmentStart>;
+  /** LIVE ONLY: verify the newly enrolled factor and reach AAL2. */
+  completeMfaEnrollment?(
+    pendingAuthId: string,
+    factorId: string,
+    code: string,
+  ): Promise<MfaEnrollmentResult>;
   /** Challenge metadata for a screen (e.g. after navigating with an id). */
   getChallenge(challengeId: string): Promise<AuthChallenge | null>;
   /** Contact info + remaining checks for a pending sign-in (verification screens). */

@@ -23,6 +23,7 @@ export default function MemberLayout() {
         animation: 'slide_from_right',
       }}>
       <Stack.Screen name="attendance" />
+      <Stack.Screen name="payments" />
     </Stack>
   );
 }

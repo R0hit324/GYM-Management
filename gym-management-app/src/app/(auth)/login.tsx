@@ -111,6 +111,13 @@ export default function LoginScreen() {
         case 'mfa_required':
           router.push(`/mfa?pending=${result.pendingAuthId}&challenge=${result.challenge.challengeId}` as never);
           return;
+        case 'mfa_enrollment_required':
+          // First staff sign-in: enrol a TOTP factor before any session is
+          // reported as signed in. The pending aal1 session grants nothing.
+          router.push(
+            `/mfa-enroll?pending=${result.pendingAuthId}&email=${encodeURIComponent(result.email)}` as never,
+          );
+          return;
         case 'verification_required':
           router.push(
             `/verify?pending=${result.pendingAuthId}&missing=${result.missing.join(',')}&email=${encodeURIComponent(email.trim())}` as never,

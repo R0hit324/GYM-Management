@@ -3,17 +3,15 @@
  *
  * Every section derives from the records the session may read: the shared
  * demo-labelled set in demo mode, or the authorised live member, payment,
- * attendance and plan rows in live mode. Fields the data model does not
- * carry (photo, date of birth, gender, address, emergency contact,
- * plan/renewal history, freeze history) render honest "not recorded" lines
- * — never invented.
+ * attendance, term and freeze rows in live mode. Fields the data model does
+ * not carry (photo, date of birth, gender, address, emergency contact)
+ * render honest "not recorded" lines — never invented.
  *
  * Section map (brief layout): Header · Contact (call/email where the
  * device supports it) · Membership · Payments & Fees · Attendance ·
  * Membership History · Quick Actions. Contact edits are the receptionist's
- * one permitted demo write, staged in the session store; in this read-only
- * live stage the edit action is not offered. Membership state is never
- * edited from this screen.
+ * write path (live: `update_member_contact`; demo: session store).
+ * Membership state is never edited from this screen.
  *
  * Opened with ?id=<member id> from the Members list; links hand the same
  * id to Collect Payment (?member=) and the Attendance Register (?member=).
@@ -49,7 +47,7 @@ import {
 import { useTokens } from '@/hooks/use-tokens';
 import { demoAttendance, demoMemberHistory } from '@/data/demo';
 import { useSessionMembers, useSessionPayments, updateSessionMember } from '@/data/session';
-import { useMemberProfile, usePlans } from '@/services/data';
+import { useMemberProfile, usePlans, updateMemberContact } from '@/services/data';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { displayMembershipStatus } from '@/utils/membership';
 import { paymentStatusInfo } from '@/utils/payment';
@@ -122,12 +120,18 @@ export default function MemberProfileScreen() {
       : [];
   }, [live, profileResource.data, sessionMember]);
   const plans = plansResource.data;
+  // Applied terms and freeze records are server-owned rows. Live mode shows
+  // exactly what the role may select; demo mode has no such records, so the
+  // history section says so instead of inventing entries.
+  const memberPeriods = live ? (profileResource.data?.periods ?? []) : [];
+  const memberFreezes = live ? (profileResource.data?.freezes ?? []) : [];
 
   // Contact edit (the one permitted demo write) stages in the session store.
   const [editOpen, setEditOpen] = useState(false);
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const plan = member ? plans.find((p) => p.id === member.planId) ?? null : null;
 
@@ -199,10 +203,29 @@ export default function MemberProfileScreen() {
     setEditOpen(true);
   };
 
-  const saveEdit = () => {
-    if (live) return;
+  const saveEdit = async () => {
     const phone = editPhone.trim();
     const email = editEmail.trim();
+    if (live) {
+      // Live mode: the receptionist-authorized server write path
+      // (update_member_contact) validates and persists; the demo-only
+      // session store is not used.
+      if (!phone) {
+        setEditError('Phone is required.');
+        return;
+      }
+      setEditSaving(true);
+      setEditError(null);
+      const result = await updateMemberContact(member.id, phone, email || null);
+      setEditSaving(false);
+      if (!result.ok) {
+        setEditError(result.error);
+        return;
+      }
+      setEditOpen(false);
+      refreshAll();
+      return;
+    }
     if (!phone || !email) {
       setEditError('Phone and email are both required.');
       return;
@@ -253,9 +276,7 @@ export default function MemberProfileScreen() {
           <WorkspaceSection
             title="Contact"
             action={
-              live ? undefined : (
-                <IconButton name="create-outline" label="Edit contact details" onPress={openEdit} />
-              )
+              <IconButton name="create-outline" label="Edit contact details" onPress={openEdit} />
             }>
             <WorkspaceCard>
               <DetailRow label="Phone" value={member.phone} />
@@ -283,7 +304,7 @@ export default function MemberProfileScreen() {
               </View>
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
                 Call and email open the device&apos;s own apps where the device supports them. Only fields that exist in the member record are shown.
-                {live ? ' Contact editing is not offered in this read-only stage.' : ''}
+                {live ? ' Contact edits are written through the receptionist-authorized server write path.' : ''}
               </AppText>
             </WorkspaceCard>
           </WorkspaceSection>
@@ -398,11 +419,56 @@ export default function MemberProfileScreen() {
           <WorkspaceSection title="Membership history">
             <WorkspaceCard>
               <DetailRow label="Freeze status" value={member.status === 'frozen' ? 'Frozen' : 'Not frozen'} />
-              <DetailRow
-                label="Freeze history"
-                value={member.status === 'frozen' ? 'Active freeze on record' : 'No freeze on record'}
-              />
-              <DetailRow label="Previous plans / renewals" value={missingLabel} />
+              {memberPeriods.length === 0 ? (
+                <DetailRow label="Applied terms" value={live ? 'No applied term yet' : missingLabel} />
+              ) : (
+                <View style={{ marginTop: spacing['3xs'] }}>
+                  <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
+                    Applied terms (newest first)
+                  </AppText>
+                  <View style={{ marginTop: spacing.xs, borderTopWidth: 1, borderColor: colors.ownerRule }}>
+                    {memberPeriods.map((period, index) => (
+                      <View key={period.id}>
+                        {index > 0 && <WorkspaceRowDivider />}
+                        <OwnerListRow
+                          title={period.planName || 'Plan'}
+                          detail={`${formatDate(period.startDate)} → ${formatDate(period.endDate)}`}
+                          status={
+                            <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
+                              {formatCurrency(period.priceApplied)}
+                            </AppText>
+                          }
+                        />
+                      </View>
+                    ))}
+                  </View>
+                  <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                    Terms are written by the server when a payment is verified; frozen days extend the end date.
+                  </AppText>
+                </View>
+              )}
+              {memberFreezes.length === 0 ? (
+                <DetailRow label="Freeze history" value={live ? 'No freeze on record' : missingLabel} />
+              ) : (
+                <View style={{ marginTop: spacing['3xs'] }}>
+                  <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
+                    Freeze records (newest first)
+                  </AppText>
+                  <View style={{ marginTop: spacing.xs, borderTopWidth: 1, borderColor: colors.ownerRule }}>
+                    {memberFreezes.map((freeze, index) => (
+                      <View key={freeze.id}>
+                        {index > 0 && <WorkspaceRowDivider />}
+                        <OwnerListRow
+                          title={`${formatDate(freeze.startDate)} → ${formatDate(freeze.endDate)}`}
+                          detail={`${freeze.state}${freeze.extensionDays ? ` · +${freeze.extensionDays} days` : ''}${
+                            freeze.reason ? ` · ${freeze.reason}` : ''
+                          }`}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
               {member.followUp.note && (
                 <DetailRow
                   label="Follow-up note"
@@ -411,8 +477,8 @@ export default function MemberProfileScreen() {
               )}
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
                 {live
-                  ? 'Renewal history, freeze records and follow-up timelines are written by audited server actions; this read-only stage shows only what the member record currently carries.'
-                  : 'Renewal history, freeze records and follow-up timelines are written by audited server actions in later parts; this demo shows only what its records carry.'}
+                  ? 'Terms and freeze records are server-owned and read-only here; validity is derived by the server from approved windows.'
+                  : 'This demo carries no applied terms or freeze records; the columns appear once the audited server actions have written them.'}
               </AppText>
             </WorkspaceCard>
           </WorkspaceSection>
@@ -449,37 +515,37 @@ export default function MemberProfileScreen() {
         <RiseIn index={7} style={{ marginTop: spacing.md }}>
           <WorkspaceWell>
             <AppText variant="caption" style={{ color: colors.ownerInkMuted }}>
-              Receptionists may collect payments, verify or reject them (never their own), and request or decide freezes. Contact edits are demo-only until a server write path exists. Membership state and every authority decision are enforced by the server.
+              Receptionists may collect payments, verify or reject them (never their own), and request or decide freezes. Contact edits are written through the authorised server write path; membership state and every authority decision are enforced by the server.
             </AppText>
           </WorkspaceWell>
         </RiseIn>
       </WorkspaceScreen>
 
-      {/* Edit contact sheet (demo only — the live stage is read-only) */}
-      {!live && (
-        <ModalSheet
-          visible={editOpen}
-          onClose={() => setEditOpen(false)}
-          title="Edit contact details"
-          subtitle="Receptionists may update phone and email">
-          <View style={{ gap: spacing.sm }}>
-            <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
-              {member.name}
+      {/* Edit contact sheet — demo stages in the session store; live writes via the server */}
+      <ModalSheet
+        visible={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit contact details"
+        subtitle="Receptionists may update phone and email">
+        <View style={{ gap: spacing.sm }}>
+          <AppText variant="bodyStrong" style={{ color: colors.ownerInk }}>
+            {member.name}
+          </AppText>
+          <TextField label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
+          <TextField label="Email" value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" autoCapitalize="none" />
+          {editError && (
+            <AppText variant="caption" style={{ color: colors.ownerErrorDeep }}>
+              {editError}
             </AppText>
-            <TextField label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
-            <TextField label="Email" value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" autoCapitalize="none" />
-            {editError && (
-              <AppText variant="caption" style={{ color: colors.ownerErrorDeep }}>
-                {editError}
-              </AppText>
-            )}
-            <Button label="Save contact details" fullWidth onPress={saveEdit} />
-            <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
-              This demo stages the edit for the session only — it is not database persistence. In production the backend validates the values and writes an audit entry with the signed-in receptionist as actor.
-            </AppText>
-          </View>
-        </ModalSheet>
-      )}
+          )}
+          <Button label={editSaving ? 'Saving…' : 'Save contact details'} fullWidth onPress={() => void saveEdit()} disabled={editSaving} />
+          <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
+            {live
+              ? 'Live mode: the backend validates the values and writes an audit entry with the signed-in receptionist as actor.'
+              : 'This demo stages the edit for the session only — it is not database persistence.'}
+          </AppText>
+        </View>
+      </ModalSheet>
 
       <WorkspaceBottomNavigation active="members" items={navItems} />
     </View>

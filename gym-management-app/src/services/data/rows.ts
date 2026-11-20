@@ -94,6 +94,7 @@ export interface PaymentRow {
   utr: string | null;
   state: PaymentState;
   receipt_issued: boolean;
+  receipt_path: string | null;
   recorded_by: string;
   verified_by: string | null;
   recorded_at: string;
@@ -133,8 +134,75 @@ export interface FollowUpRow {
 
 export interface JoinApplicationRow {
   id: string;
+  auth_user_id: string | null;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  plan_id: string | null;
   state: string;
+  phone_verified: boolean;
+  email_verified: boolean;
+  created_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
 }
+
+/** Exact `membership_periods` row shape (history reads; writes via verify_payment). */
+export interface MembershipPeriodRow {
+  id: string;
+  member_id: string;
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+  price_applied: number;
+  created_by_payment: string;
+  created_at: string;
+}
+
+/**
+ * Exact `audit_log_entries` row shape. Owner-readable only; the viewer uses
+ * an explicit column list and a bounded page.
+ */
+export interface AuditLogRow {
+  id: string;
+  actor: string | null;
+  actor_role: string | null;
+  action: string;
+  table_name: string;
+  row_id: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  at: string;
+}
+
+/**
+ * A plan request recorded on `members.pending_plan_id` (staff-readable). It
+ * applies only when the member's next payment is verified.
+ */
+export interface PendingAssignmentRow {
+  id: string;
+  full_name: string;
+  pending_plan_id: string;
+  pending_plan_requested_by: string | null;
+}
+
+/**
+ * Exact `admin_staff_directory()` row shape (owner-only RPC). The function
+ * joins auth.users for email/last sign-in; no credential or token is
+ * returned.
+ */
+export interface StaffDirectoryRow {
+  user_id: string;
+  display_name: string;
+  role: 'owner' | 'receptionist';
+  email: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  last_sign_in_at: string | null;
+}
+
+
 
 export type FreezeState = 'pending' | 'approved' | 'rejected' | 'ended';
 export type FreezeEndedVia = 'scan' | 'receptionist' | null;

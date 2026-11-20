@@ -15,12 +15,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/services/auth/auth-context';
 import type {
   AttendanceEvent,
+  AuditLogEntry,
   DailyReportNumbers,
   FreezeRecord,
   GymSettings,
+  JoinApplication,
   Member,
+  MembershipPeriodRecord,
   MembershipPlan,
   PaymentRecord,
+  StaffAccount,
 } from '@/types/domain';
 
 import { demoOwnershipReport } from '@/data/demo';
@@ -32,6 +36,7 @@ import {
   demoMonthlyRevenue,
   demoMyAttendance,
   demoMyMember,
+  demoMyPayments,
   demoPaymentsList,
   demoPendingApplications,
   demoPlansList,
@@ -39,27 +44,42 @@ import {
 import {
   latestFollowUps,
   toAttendance,
+  toAuditEntry,
   toDailyReport,
   toFreeze,
   toGymSettings,
   toInactiveMember,
+  toJoinApplication,
   toMemberStatus,
+  toMembershipPeriod,
   toMonthlyRevenue,
   toPayment,
   toPlan,
+  toStaffAccount,
 } from './mappers';
 import {
   fetchAttendanceRows,
+  fetchAttendanceRowsForMember,
+  fetchAttendanceRowsInRange,
+  fetchAuditLogRows,
   fetchDailyReportRow,
   fetchFollowUpRows,
+  fetchFollowUpRowsForMember,
   fetchFreezeRows,
+  fetchFreezeRowsForMember,
   fetchGymSettingsRow,
   fetchInactiveMemberRows,
   fetchJoinApplicationRows,
+  fetchMemberStatusRow,
   fetchMemberStatusRows,
+  fetchMembershipPeriodRowsForMember,
   fetchMonthRevenueRows,
   fetchPaymentRows,
+  fetchPaymentRowsForMember,
+  fetchPaymentRowsInRange,
+  fetchPendingAssignmentRows,
   fetchPlanRows,
+  fetchStaffDirectoryRows,
 } from './queries';
 import type { MonthlyRevenue } from './rows';
 
@@ -79,6 +99,18 @@ export interface MemberProfileData {
   payments: PaymentRecord[];
   attendance: AttendanceEvent[];
   plans: MembershipPlan[];
+  /** Applied terms, newest first (empty until a verified payment). */
+  periods: MembershipPeriodRecord[];
+  /** Freeze records, newest first; validity is still derived by the server. */
+  freezes: FreezeRecord[];
+}
+
+/** A plan request waiting for the member's next verified payment. */
+export interface PendingPlanAssignment {
+  memberId: string;
+  memberName: string;
+  planId: string;
+  planName: string;
 }
 
 function localDate(): string {
@@ -152,6 +184,24 @@ async function loadPendingApplications(): Promise<number> {
   return rows.filter((row) => row.state === 'submitted' || row.state === 'pendingVerification').length;
 }
 
+/** Full application rows for the reception review screen (newest first). */
+async function loadJoinApplications(): Promise<JoinApplication[]> {
+  const rows = await fetchJoinApplicationRows();
+  return rows.map(toJoinApplication);
+}
+
+/** Owner-only audit page; RLS refuses every other role. */
+async function loadAuditLog(): Promise<AuditLogEntry[]> {
+  const rows = await fetchAuditLogRows();
+  return rows.map(toAuditEntry);
+}
+
+/** Owner-only staff directory (owners + receptionists). */
+async function loadStaffDirectory(): Promise<StaffAccount[]> {
+  const rows = await fetchStaffDirectoryRows();
+  return rows.map(toStaffAccount);
+}
+
 async function loadMyMembership(): Promise<Member | null> {
   const [statusRows, followUpRows] = await Promise.all([
     fetchMemberStatusRows(),
@@ -162,35 +212,73 @@ async function loadMyMembership(): Promise<Member | null> {
   return toMemberStatus(row, latestFollowUps(followUpRows).get(row.member_id));
 }
 
+/** The member's own attendance, scoped by the caller's member id. */
 async function loadMyAttendance(): Promise<AttendanceEvent[]> {
+  const statusRows = await fetchMemberStatusRows();
+  const row = statusRows[0];
+  if (!row) return [];
+  const attendanceRows = await fetchAttendanceRowsForMember(row.member_id);
+  return attendanceRows.map((event) => toAttendance(event, row.full_name));
+}
+
+/** The member's own payments (read-only); receipts are metadata on the row. */
+async function loadMyPayments(): Promise<PaymentRecord[]> {
+  const statusRows = await fetchMemberStatusRows();
+  const row = statusRows[0];
+  if (!row) return [];
+  const paymentRows = await fetchPaymentRowsForMember(row.member_id);
+  return paymentRows.map((payment) => toPayment(payment, row.full_name));
+}
+
+/**
+ * One member's complete profile. Every read is scoped by `member_id` and
+ * bounded — never "fetch all and filter in JS".
+ */
+async function loadMemberProfile(memberId: string): Promise<MemberProfileData> {
+  const [row, paymentRows, attendanceRows, planRows, periodRows, freezeRows, followUpRows] =
+    await Promise.all([
+      fetchMemberStatusRow(memberId),
+      fetchPaymentRowsForMember(memberId),
+      fetchAttendanceRowsForMember(memberId),
+      fetchPlanRows(),
+      fetchMembershipPeriodRowsForMember(memberId),
+      fetchFreezeRowsForMember(memberId),
+      fetchFollowUpRowsForMember(memberId).catch(() => []),
+    ]);
+  const name = row?.full_name ?? 'Member';
+  const planNames = new Map(planRows.map((plan) => [plan.id, plan.name] as const));
+  return {
+    member: row ? toMemberStatus(row, latestFollowUps(followUpRows).get(row.member_id)) : null,
+    payments: paymentRows.map((payment) => toPayment(payment, name)),
+    attendance: attendanceRows.map((event) => toAttendance(event, name)),
+    plans: planRows.map(toPlan),
+    periods: periodRows.map((period) =>
+      toMembershipPeriod(period, planNames.get(period.plan_id) ?? ''),
+    ),
+    freezes: freezeRows.map((freeze) => toFreeze(freeze, name)),
+  };
+}
+
+/** Bounded ledger for a reporting range (used by owner analytics/export). */
+async function loadPaymentsInRange(fromIso: string, toIso: string): Promise<PaymentRecord[]> {
+  const [paymentRows, statusRows] = await Promise.all([
+    fetchPaymentRowsInRange(fromIso, toIso),
+    fetchMemberStatusRows(),
+  ]);
+  const names = new Map(statusRows.map((row) => [row.member_id, row.full_name] as const));
+  return paymentRows.map((row) => toPayment(row, names.get(row.member_id) ?? 'Member'));
+}
+
+async function loadAttendanceInRange(
+  fromIso: string,
+  toIso: string,
+): Promise<AttendanceEvent[]> {
   const [attendanceRows, statusRows] = await Promise.all([
-    fetchAttendanceRows(),
+    fetchAttendanceRowsInRange(fromIso, toIso),
     fetchMemberStatusRows(),
   ]);
   const names = new Map(statusRows.map((row) => [row.member_id, row.full_name] as const));
   return attendanceRows.map((row) => toAttendance(row, names.get(row.member_id) ?? 'Member'));
-}
-
-async function loadMemberProfile(memberId: string): Promise<MemberProfileData> {
-  const [statusRows, paymentRows, attendanceRows, planRows, followUpRows] = await Promise.all([
-    fetchMemberStatusRows(),
-    fetchPaymentRows(),
-    fetchAttendanceRows(),
-    fetchPlanRows(),
-    fetchFollowUpRows().catch(() => []),
-  ]);
-  const row = statusRows.find((candidate) => candidate.member_id === memberId) ?? null;
-  const name = row?.full_name ?? 'Member';
-  return {
-    member: row ? toMemberStatus(row, latestFollowUps(followUpRows).get(row.member_id)) : null,
-    payments: paymentRows
-      .filter((payment) => payment.member_id === memberId)
-      .map((payment) => toPayment(payment, name)),
-    attendance: attendanceRows
-      .filter((event) => event.member_id === memberId)
-      .map((event) => toAttendance(event, name)),
-    plans: planRows.map(toPlan),
-  };
 }
 
 async function loadFreezes(): Promise<FreezeRecord[]> {
@@ -205,6 +293,25 @@ async function loadFreezes(): Promise<FreezeRecord[]> {
 async function loadGymSettings(): Promise<GymSettings | null> {
   const row = await fetchGymSettingsRow();
   return row ? toGymSettings(row) : null;
+}
+
+/**
+ * Pending plan requests are read from `members.pending_plan_id` (staff
+ * policy) and the plan name resolved from the live catalogue. A request is
+ * not a plan change yet — it applies on the next verified payment.
+ */
+async function loadPendingAssignments(): Promise<PendingPlanAssignment[]> {
+  const [pendingRows, planRows] = await Promise.all([
+    fetchPendingAssignmentRows(),
+    fetchPlanRows(),
+  ]);
+  const planNames = new Map(planRows.map((plan) => [plan.id, plan.name] as const));
+  return pendingRows.map((row) => ({
+    memberId: row.id,
+    memberName: row.full_name,
+    planId: row.pending_plan_id,
+    planName: planNames.get(row.pending_plan_id) ?? 'Plan not on record',
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -341,4 +448,56 @@ export function useFreezes(): DataResource<FreezeRecord[]> {
 /** The server-owned singleton settings row (null until configured in live mode). */
 export function useGymSettings(): DataResource<GymSettings | null> {
   return useResource<GymSettings | null>(null, null, loadGymSettings);
+}
+
+/** Full join applications for the reception review screen. */
+export function useJoinApplications(): DataResource<JoinApplication[]> {
+  return useResource<JoinApplication[]>([], [], loadJoinApplications);
+}
+
+/** Owner-only append-only audit page (newest first, bounded). */
+export function useAuditLog(): DataResource<AuditLogEntry[]> {
+  return useResource<AuditLogEntry[]>([], [], loadAuditLog);
+}
+
+/**
+ * Staff directory for the owner console. Demo mode is honestly empty: the
+ * directory is server-produced and there is no sample staff list to fake.
+ */
+export function useStaffDirectory(): DataResource<StaffAccount[]> {
+  return useResource<StaffAccount[]>([], [], loadStaffDirectory);
+}
+
+/** The signed-in member's own payment rows. */
+export function useMyPayments(): DataResource<PaymentRecord[]> {
+  return useResource<PaymentRecord[]>(demoMyPayments, [], loadMyPayments);
+}
+
+/** Bounded ledger for an explicit half-open [from, to) reporting range. */
+export function usePaymentsInRange(
+  fromIso: string,
+  toIso: string,
+): DataResource<PaymentRecord[]> {
+  const load = useCallback(
+    () => (fromIso && toIso ? loadPaymentsInRange(fromIso, toIso) : Promise.resolve([])),
+    [fromIso, toIso],
+  );
+  return useResource<PaymentRecord[]>([], [], load);
+}
+
+/** Bounded attendance events for an explicit half-open [from, to) range. */
+export function useAttendanceInRange(
+  fromIso: string,
+  toIso: string,
+): DataResource<AttendanceEvent[]> {
+  const load = useCallback(
+    () => (fromIso && toIso ? loadAttendanceInRange(fromIso, toIso) : Promise.resolve([])),
+    [fromIso, toIso],
+  );
+  return useResource<AttendanceEvent[]>([], [], load);
+}
+
+/** Server-recorded pending plan requests (applied on next verified payment). */
+export function usePendingAssignments(): DataResource<PendingPlanAssignment[]> {
+  return useResource<PendingPlanAssignment[]>([], [], loadPendingAssignments);
 }

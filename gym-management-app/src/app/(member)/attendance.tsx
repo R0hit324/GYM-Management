@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppText } from '@/components/ui/text';
@@ -291,6 +292,14 @@ export default function MemberAttendanceScreen() {
                 style={{ flex: 1, minWidth: 96 }}
               />
             ))}
+            <ActionTile
+              icon="receipt-outline"
+              label="Payments"
+              tone="accent"
+              onPress={() => router.push('/(member)/payments' as never)}
+              accessibilityHint="Opens your payments and receipts"
+              style={{ flex: 1, minWidth: 96 }}
+            />
           </ActionGrid>
         </RiseIn>
 

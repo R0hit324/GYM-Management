@@ -249,6 +249,49 @@ export async function createReversal(
   }
 }
 
+/**
+ * Issue the receipt flag on a VERIFIED payment (receptionist + AAL2). This
+ * is metadata only — no price, state or verifier column changes, and the
+ * server refuses a second issue on the same row. The private PDF path is
+ * attached separately (`attachReceiptPath`) before this one-way flag.
+ */
+export async function issueReceipt(paymentId: string): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('issue_receipt', {
+      p_payment_id: paymentId,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Attach the deterministic Storage object path to a VERIFIED payment
+ * (receptionist + AAL2). The server recomputes the path from the payment's
+ * own member id and refuses anything else; the same path is an idempotent
+ * retry. Sent before `issueReceipt` so a failed upload never marks a
+ * payment as receipted.
+ */
+export async function attachReceiptPath(
+  paymentId: string,
+  receiptPath: string,
+): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('attach_receipt_path', {
+      p_payment_id: paymentId,
+      p_receipt_path: receiptPath,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Owner writes
 // ---------------------------------------------------------------------------
@@ -341,6 +384,151 @@ export async function endFreeze(freezeId: string): Promise<WriteOutcome<string>>
     const client = await requireClient();
     const { data, error } = await client.rpc('end_freeze', {
       p_freeze_id: freezeId,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stage 5 — remaining integration gaps (contact edit, plan lifecycle,
+//          join application submission). Same conventions as above: ONE
+//          shared client, verified authority functions, server-owned
+//          decisions, raw server errors preserved.
+// ---------------------------------------------------------------------------
+
+/**
+ * Receptionist contact edit (member fields only). The server validates the
+ * permitted contact fields and writes + audits. Membership state is never
+ * touched here.
+ */
+export async function updateMemberContact(
+  memberId: string,
+  phone: string,
+  email: string | null,
+): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('update_member_contact', {
+      p_member_id: memberId,
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Owner creates a plan (validated: positive price, supported duration,
+ * INR currency). Historical memberships are never touched.
+ */
+export async function createPlan(
+  name: string,
+  duration: string,
+  price: number,
+  currency: string,
+  isActive: boolean,
+): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('create_plan', {
+      p_name: name,
+      p_duration: duration,
+      p_price: price,
+      p_currency: currency,
+      p_is_active: isActive,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Owner soft-deactivates a plan (is_active = false). Historical memberships
+ * and locked prices are preserved.
+ */
+export async function deactivatePlan(planId: string): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('deactivate_plan', {
+      p_plan_id: planId,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Member self-submits a join application. The server binds the applicant
+ * to auth.uid() and forces state to 'submitted'.
+ */
+export async function submitJoinApplication(
+  fullName: string,
+  phone: string,
+  email: string,
+  planId: string,
+): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('submit_join_application', {
+      p_full_name: fullName,
+      p_phone: phone,
+      p_email: email,
+      p_plan_id: planId,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Request a plan assignment (receptionist). The server records the request
+ * on the member; it applies atomically with the next verified payment and
+ * captures the plan price at that moment. The member's current plan and
+ * locked price are never silently rewritten.
+ */
+export async function requestPlanAssignment(
+  memberId: string,
+  planId: string,
+): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('request_plan_assignment', {
+      p_member_id: memberId,
+      p_plan_id: planId,
+    });
+    if (error) return failure(error);
+    return { ok: true, data: String(data) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Decide a submitted join application (receptionist). On approval the server
+ * creates the member record from the stored application; the caller never
+ * supplies prices, verification flags or a role.
+ */
+export async function decideApplication(
+  applicationId: string,
+  approve: boolean,
+): Promise<WriteOutcome<string>> {
+  try {
+    const client = await requireClient();
+    const { data, error } = await client.rpc('decide_application', {
+      p_application_id: applicationId,
+      p_approve: approve,
     });
     if (error) return failure(error);
     return { ok: true, data: String(data) };

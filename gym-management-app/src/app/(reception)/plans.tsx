@@ -1,25 +1,24 @@
 /**
- * Membership Plans — the desk's plan book (Stage 7: price management).
+ * Membership Plans — the desk's plan book.
  *
- * View every plan (name, duration, price, benefits, validity) drawn from
- * the single shared plan data structure (no duplicate plan tables), assign
- * a plan to a member, and adjust a plan's price for the session. Editing
- * a price is a session-only demo change staged in the shared session
- * store: it shows across the Receptionist workspace (Collect Payment uses
- * it for new memberships), resets when the app restarts, and is never
- * presented as a server or database save. Creating plans remains
- * Owner-only — stated on-screen.
+ * Demo mode reads the approved demo catalogue and keeps price edits and
+ * assignments in the session store (clearly labelled, reset on restart).
  *
- * Integrity rules preserved: members' locked prices and historical
- * transactions are never touched by a price edit — renewals keep
- * `priceLocked`, and recorded amounts stay exactly as they were.
+ * Live mode reads the real plan catalogue and member list
+ * (`usePlans`/`useMembers`) and sends an assignment through
+ * `request_plan_assignment`; the server records the request on the member
+ * and applies it atomically with the member's next verified payment. The
+ * screen never rewrites the member's current plan or locked price, and the
+ * "pending assignments" list is the server's own `members.pending_plan_id`,
+ * not local state.
  *
- * Honesty rule: an assignment never silently rewrites the member's plan or
- * locked price. It is recorded as a pending assignment that applies with
- * the member's next verified payment; the backend enforces this in Part 2.
+ * Plan price changes and plan creation stay Owner-only (`update_plan_price`,
+ * `create_plan`, `deactivate_plan`); the receptionist sees a read-only
+ * catalogue in live mode. No price edit ever touches a locked renewal price
+ * or a recorded transaction.
  */
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -29,6 +28,7 @@ import { ModalSheet } from '@/components/ui/modal-sheet';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SuccessPop } from '@/components/ui/motion';
 import { RiseIn } from '@/components/ui/rise-in';
+import { ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { SignOut } from '@/components/workspace-meta';
 import {
   WorkspaceScreen,
@@ -54,7 +54,15 @@ import {
   resetSessionPlanPrices,
 } from '@/data/session';
 import { parsePlanPrice } from '@/utils/payment';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, memberDisplayId } from '@/utils/format';
+import {
+  createPlan,
+  deactivatePlan,
+  requestPlanAssignment,
+  useMembers,
+  usePendingAssignments,
+  usePlans,
+} from '@/services/data';
 import { useAuth } from '@/services/auth';
 import type { MembershipPlan, PlanDuration } from '@/types/domain';
 
@@ -82,18 +90,29 @@ interface PlanAssignment {
 export default function ReceptionPlansScreen() {
   const tokens = useTokens();
   const { colors, spacing } = tokens;
-  const { provider } = useAuth();
+  const { provider, session } = useAuth();
   const live = provider.mode === 'live';
+  const isOwner = live && session?.role === 'owner';
 
-  // Session price overrides — the single shared store; editing a price
-  // here shows across the Receptionist workspace for this session only.
-  // In live mode, plan price updates are owner-only (update_plan_price RPC),
-  // so the receptionist screen presents prices as read-only.
+  // Live reads: the real catalogue, member list and server-recorded pending
+  // requests. Demo mode keeps the approved demo arrays below.
+  const plansResource = usePlans();
+  const membersResource = useMembers();
+  const pendingResource = usePendingAssignments();
+
+  const plans = live ? plansResource.data : demoPlans;
+  const members = live ? membersResource.data : demoMembers;
+
+  // Session price overrides — demo only. Live prices are server-owned and
+  // read-only for a receptionist.
   const planPrices = useSessionPlanPrices();
-  const priceOf = (p: MembershipPlan) => effectivePlanPrice(p.id, p.price, planPrices);
-  const overridesActive = Object.keys(planPrices).length > 0;
+  const priceOf = (p: MembershipPlan) =>
+    live ? p.price : effectivePlanPrice(p.id, p.price, planPrices);
+  const overridesActive = !live && Object.keys(planPrices).length > 0;
 
   const [assignments, setAssignments] = useState<PlanAssignment[]>([]);
+  const [assigning, setAssigning] = useState(false);
+  const [assignNotice, setAssignNotice] = useState<string | null>(null);
   const [assignPlan, setAssignPlan] = useState<MembershipPlan | null>(null);
   const [query, setQuery] = useState('');
   const [pickedId, setPickedId] = useState<string | null>(null);
@@ -140,23 +159,83 @@ export default function ReceptionPlansScreen() {
     setPriceNote('Plan prices are back to the demo figures. Session price changes are gone.');
   };
 
+  // Owner plan lifecycle (live): create_plan / deactivate_plan.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDuration, setCreateDuration] = useState<PlanDuration>('monthly');
+  const [createPrice, setCreatePrice] = useState('');
+  const [createIsActive, setCreateIsActive] = useState(true);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [lifecycleNote, setLifecycleNote] = useState<string | null>(null);
+
+  const createPlanNow = async () => {
+    const n = parsePlanPrice(createPrice);
+    const result = await createPlan(createName.trim(), createDuration, n ?? 0, 'INR', createIsActive);
+    if (!result.ok) {
+      setCreateError(result.error);
+      return;
+    }
+    setCreateOpen(false);
+    setCreateName('');
+    setCreatePrice('');
+    setCreateIsActive(true);
+    setLifecycleNote(`Plan "${createName.trim()}" created.`);
+  };
+
+  const deactivatePlanNow = async (plan: MembershipPlan) => {
+    setDeactivatingId(plan.id);
+    const result = await deactivatePlan(plan.id);
+    setDeactivatingId(null);
+    if (!result.ok) {
+      setLifecycleError(result.error);
+      return;
+    }
+    setLifecycleError(null);
+    setLifecycleNote(`Plan "${plan.name}" deactivated.`);
+  };
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return demoMembers.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.id.replace('m-', '').includes(q),
+    return members.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.phone.replace(/\s+/g, '').includes(q) ||
+        memberDisplayId(m.id).toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [members, query]);
 
-  const picked = demoMembers.find((m) => m.id === pickedId) ?? null;
+  const picked = members.find((m) => m.id === pickedId) ?? null;
 
-  const confirmAssign = () => {
+  const confirmAssign = async () => {
     if (!assignPlan || !picked) {
       setAssignError('Pick a member to assign this plan to.');
       return;
     }
-    // One pending assignment per member: re-assigning replaces the request
-    // instead of stacking duplicates.
+    if (live) {
+      if (assigning) return;
+      setAssigning(true);
+      const result = await requestPlanAssignment(picked.id, assignPlan.id);
+      setAssigning(false);
+      if (!result.ok) {
+        setAssignError(result.error);
+        return;
+      }
+      pendingResource.refresh();
+      setAssignError(null);
+      setAssignNotice(
+        `Plan request recorded for ${picked.name}. It applies when their next payment is verified — the current plan and locked price stay unchanged until then.`,
+      );
+      setAssignPlan(null);
+      setPickedId(null);
+      setQuery('');
+      setDoneOpen(true);
+      return;
+    }
+    // Demo: session-only request book, never presented as a server save.
     setAssignments((prev) => [
       {
         id: `assign-${picked.id}`,
@@ -180,7 +259,7 @@ export default function ReceptionPlansScreen() {
         title="Membership Plans"
         eyebrow="Memberships"
         subtitle="View plans, assign to members"
-        demo
+        demo={!live}
         actions={<SignOut />}>
         {/* Session price note */}
         {priceNote && (
@@ -204,8 +283,45 @@ export default function ReceptionPlansScreen() {
           </WorkspaceWell>
         </RiseIn>
 
-        {/* Plan cards */}
-        {demoPlans.map((plan, i) => (
+        {/* Owner plan lifecycle (live): create_plan / deactivate_plan */}
+        {isOwner && live && (
+          <RiseIn index={plans.length + 4} style={{ marginTop: spacing.sm }}>
+            {lifecycleError ? (
+              <AppText variant="caption" style={{ color: colors.ownerErrorDeep, marginBottom: spacing.xs }}>
+                {lifecycleError}
+              </AppText>
+            ) : null}
+            {lifecycleNote ? (
+              <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginBottom: spacing.xs }}>
+                {lifecycleNote}
+              </AppText>
+            ) : null}
+            <Button
+              label="Create plan"
+              size="small"
+              variant="secondary"
+              icon="add-outline"
+              onPress={() => {
+                setCreateOpen(true);
+                setCreateError(null);
+              }}
+            />
+          </RiseIn>
+        )}
+
+        {/* Plan cards — live catalogue in live mode, demo catalogue in demo. */}
+        {live && plansResource.status === 'loading' && plans.length === 0 ? (
+          <SkeletonRow count={3} style={{ marginTop: spacing.sm }} />
+        ) : null}
+        {live && plansResource.status === 'error' ? (
+          <ErrorState
+            title="Plans could not be loaded"
+            message={plansResource.error ?? 'The plan catalogue is unavailable.'}
+            onRetry={plansResource.refresh}
+            style={{ marginTop: spacing.sm }}
+          />
+        ) : null}
+        {plans.map((plan, i) => (
           <RiseIn key={plan.id} index={(priceNote ? 2 : 1) + i} style={{ marginTop: spacing.sm }}>
             <WorkspaceCard>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm }}>
@@ -222,7 +338,7 @@ export default function ReceptionPlansScreen() {
                     {formatCurrency(priceOf(plan))}
                   </AppText>
                   <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
-                    {planPrices[plan.id] !== undefined
+                    {!live && planPrices[plan.id] !== undefined
                       ? `session price · demo was ${formatCurrency(plan.price)}`
                       : `per ${durationLabel[plan.duration]}`}
                   </AppText>
@@ -266,6 +382,17 @@ export default function ReceptionPlansScreen() {
                   }}
                   style={{ alignSelf: 'flex-start' }}
                 />
+                {isOwner && live && (
+                  <Button
+                    label={deactivatingId === plan.id ? 'Deactivating…' : 'Deactivate plan'}
+                    size="small"
+                    variant="secondary"
+                    icon="trash-outline"
+                    onPress={() => void deactivatePlanNow(plan)}
+                    disabled={deactivatingId === plan.id}
+                    style={{ alignSelf: 'flex-start' }}
+                  />
+                )}
               </View>
             </WorkspaceCard>
           </RiseIn>
@@ -273,20 +400,48 @@ export default function ReceptionPlansScreen() {
 
         {/* Reset session prices */}
         {overridesActive && (
-          <RiseIn index={demoPlans.length + (priceNote ? 3 : 2)} style={{ marginTop: spacing.sm }}>
+          <RiseIn index={plans.length + (priceNote ? 3 : 2)} style={{ marginTop: spacing.sm }}>
             <Button label="Reset prices to demo" variant="secondary" icon="refresh-outline" onPress={resetPrices} />
           </RiseIn>
         )}
 
-        {/* Pending assignments */}
-        <RiseIn index={demoPlans.length + 3} style={{ marginTop: spacing.sm }}>
+        {/* Pending assignments — server rows in live mode, session rows in demo */}
+        <RiseIn index={plans.length + 3} style={{ marginTop: spacing.sm }}>
           <WorkspaceSection title="Pending plan assignments">
-            {assignments.length === 0 ? (
+            {live && pendingResource.status === 'loading' && pendingResource.data.length === 0 ? (
+              <SkeletonRow count={2} />
+            ) : null}
+            {live && pendingResource.status === 'error' ? (
+              <ErrorState
+                title="Pending assignments could not be loaded"
+                message={pendingResource.error ?? 'The request list is unavailable.'}
+                onRetry={pendingResource.refresh}
+              />
+            ) : null}
+            {(live ? pendingResource.data.length === 0 : assignments.length === 0) ? (
               <OwnerEmptyState
                 icon="swap-horizontal-outline"
                 title="No assignments pending"
-                hint="Assignments appear here and apply with the member's next verified payment."
+                hint={
+                  live
+                    ? 'A plan request appears here after it is recorded and applies with the next verified payment.'
+                    : 'Demo assignments appear here and apply with the next verified payment.'
+                }
               />
+            ) : live ? (
+              <OwnerListGroup label="Recorded on the member record">
+                {pendingResource.data.map((a, i) => (
+                  <View key={a.memberId}>
+                    {i > 0 && <WorkspaceRowDivider />}
+                    <OwnerListRow
+                      leading={<OwnerMemberAvatar name={a.memberName} />}
+                      title={`${a.memberName} → ${a.planName}`}
+                      detail="Applies with the next verified payment"
+                      status={<OwnerStatusText label="Pending payment" tone="warning" />}
+                    />
+                  </View>
+                ))}
+              </OwnerListGroup>
             ) : (
               <OwnerListGroup label="Assignments awaiting the next payment">
                 {assignments.map((a, i) => (
@@ -295,7 +450,7 @@ export default function ReceptionPlansScreen() {
                     <OwnerListRow
                       leading={<OwnerMemberAvatar name={a.memberName} />}
                       title={`${a.memberName} → ${a.planName}`}
-                      detail="Applies with the next verified payment"
+                      detail="Session record — applies with the next verified payment"
                       status={<OwnerStatusText label="Pending payment" tone="warning" />}
                     />
                   </View>
@@ -397,8 +552,12 @@ export default function ReceptionPlansScreen() {
         visible={!!assignPlan}
         onClose={() => setAssignPlan(null)}
         title={`Assign ${assignPlan?.name ?? ''}`}
-        subtitle="Plan change applies with the next verified payment"
-        toneBadge={<StatusBadge label="Demo" tone="warning" small />}>
+        subtitle={
+          live
+            ? 'Recorded on the member; applies with their next verified payment'
+            : 'Session-only assignment'
+        }
+        toneBadge={!live ? <StatusBadge label="Demo" tone="warning" small /> : undefined}>
         {assignPlan && (
           <View style={{ gap: spacing.sm }}>
             <WorkspaceCard>
@@ -426,7 +585,7 @@ export default function ReceptionPlansScreen() {
               <OwnerListRow
                 leading={<OwnerMemberAvatar name={picked.name} />}
                 title={picked.name}
-                detail={picked.id.replace('m-', 'GB-').toUpperCase()}
+                detail={memberDisplayId(picked.id)}
                 status={<OwnerStatusText label="Selected" tone="action" />}
               />
             ) : results.length > 0 ? (
@@ -437,7 +596,7 @@ export default function ReceptionPlansScreen() {
                     <OwnerListRow
                       leading={<OwnerMemberAvatar name={m.name} />}
                       title={m.name}
-                      detail={m.id.replace('m-', 'GB-').toUpperCase()}
+                      detail={memberDisplayId(m.id)}
                       chevron
                       onPress={() => {
                         setPickedId(m.id);
@@ -461,7 +620,12 @@ export default function ReceptionPlansScreen() {
               </AppText>
             )}
 
-            <Button label="Record assignment" fullWidth onPress={confirmAssign} />
+            <Button
+              label={assigning ? 'Recording…' : live ? 'Request plan change' : 'Record assignment'}
+              fullWidth
+              disabled={assigning}
+              onPress={() => void confirmAssign()}
+            />
             <AppText variant="caption" style={{ color: colors.ownerInkSubtle }}>
               The member&apos;s current plan and locked price stay exactly as they are until the next verified payment; nothing is edited silently.
             </AppText>
@@ -469,17 +633,52 @@ export default function ReceptionPlansScreen() {
         )}
       </ModalSheet>
 
+      {/* Owner create-plan sheet (live) */}
+      <ModalSheet
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create plan"
+        subtitle="Owner-only · validated before submit">
+        <View style={{ gap: spacing.sm }}>
+          <TextField label="Plan name" value={createName} onChangeText={setCreateName} placeholder="e.g. 3b8 New Plan" />
+          <TextField
+            label="Duration"
+            value={createDuration}
+            onChangeText={(v) => setCreateDuration(v as PlanDuration)}
+          />
+          <TextField label="Price" value={createPrice} onChangeText={setCreatePrice} keyboardType="numeric" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+            <AppText variant="label" style={{ color: colors.ownerInkMuted }}>Active</AppText>
+            <Switch
+              value={createIsActive}
+              onValueChange={setCreateIsActive}
+              trackColor={{ false: colors.ownerRule, true: colors.ownerAccentDeep }}
+              thumbColor={colors.ownerInk}
+            />
+          </View>
+          {createError ? (
+            <AppText variant="caption" style={{ color: colors.ownerErrorDeep }}>
+              {createError}
+            </AppText>
+          ) : null}
+          <Button label="Create plan" fullWidth onPress={() => void createPlanNow()} />
+        </View>
+      </ModalSheet>
+
       {/* Honest confirmation */}
       <ModalSheet
         visible={doneOpen}
         onClose={() => setDoneOpen(false)}
-        title="Assignment recorded"
+        title={live ? 'Plan request recorded' : 'Assignment recorded'}
         subtitle="Applies with the next verified payment">
         <View style={{ alignItems: 'center', marginBottom: spacing.sm }}>
           <SuccessPop size={54} color={colors.success} />
         </View>
         <AppText variant="body" style={{ color: colors.ownerInk }}>
-          The pending assignment is listed on this screen. In production the plan change is applied server-side when the member&apos;s next payment is verified, keeping the price lock and audit trail intact.
+          {live
+            ? (assignNotice ??
+              'The request is recorded on the member record and is listed under pending assignments. The plan change is applied by the server when the next payment is verified, keeping the price lock and audit trail intact.')
+            : 'The pending assignment is listed on this screen for this session only — nothing was saved to a server or database. In production the plan change is applied server-side when the member\u2019s next payment is verified, keeping the price lock and audit trail intact.'}
         </AppText>
         <View style={{ marginTop: spacing.sm }}>
           <Button label="Close" variant="secondary" fullWidth onPress={() => setDoneOpen(false)} />

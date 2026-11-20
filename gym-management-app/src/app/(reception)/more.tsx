@@ -3,9 +3,9 @@
  *
  * Daily Operations (Attendance Register, Attendance & Door QR), Payments
  * (Collect Payment, Payment QR, Transaction History) and Membership
- * Management (Membership Plans, Renewals, Freeze / Unfreeze). Every row
- * points at its own dedicated screen — no duplicate rows to the same
- * destination, no "Other" bucket.
+ * Management (Join Applications, Membership Plans, Renewals, Freeze /
+ * Unfreeze). Every row points at its own dedicated screen — no duplicate
+ * rows to the same destination, no "Other" bucket.
  */
 import { View } from 'react-native';
 import { router } from 'expo-router';
@@ -24,6 +24,7 @@ import {
 } from '@/components/workspace/workspace-ui';
 import { useTokens } from '@/hooks/use-tokens';
 import { useSessionPayments } from '@/data/session';
+import { usePayments } from '@/services/data';
 
 const navItems = [
   { key: 'home', label: 'Home', icon: 'home-outline', href: '/(reception)/home' },
@@ -52,7 +53,10 @@ export default function ReceptionMoreScreen() {
   const { colors, spacing, radius } = tokens;
 
   const records = useSessionPayments();
-  const pendingCount = records.filter((p) => p.state === 'awaitingVerification').length;
+  const liveResource = usePayments();
+  const live = liveResource.isLive;
+  const deskRecords = live ? liveResource.data : records;
+  const pendingCount = deskRecords.filter((p) => p.state === 'awaitingVerification').length;
 
   const sections: MoreSection[] = [
     {
@@ -71,7 +75,7 @@ export default function ReceptionMoreScreen() {
       actions: [
         { key: 'collect', label: 'Collect Payment', icon: 'cash-outline', badge: pendingCount > 0 ? String(pendingCount) : undefined, hint: 'Member, plan, discount, UPI or cash', href: '/(reception)/fees' },
         { key: 'qr', label: 'Payment QR', icon: 'qr-code-outline', hint: "The gym's UPI code and its configuration", href: '/(reception)/payment-qr' },
-        { key: 'history', label: 'Transaction History', icon: 'time-outline', hint: 'Pending and verified payment records', href: '/(reception)/transaction-history' },
+        { key: 'history', label: 'Transaction History', icon: 'time-outline', hint: 'Pending, verified and issued receipts', href: '/(reception)/transaction-history' },
       ],
     },
     {
@@ -79,6 +83,7 @@ export default function ReceptionMoreScreen() {
       title: 'Membership Management',
       tone: 'blue',
       actions: [
+        { key: 'applications', label: 'Join Applications', icon: 'file-tray-full-outline', hint: 'Review and decide submitted join requests', href: '/(reception)/applications' },
         { key: 'plans', label: 'Membership Plans', icon: 'card-outline', hint: 'Plans, durations and prices', href: '/(reception)/plans' },
         { key: 'renewals', label: 'Renewals', icon: 'calendar-clear-outline', hint: 'Expiring and expired memberships', href: '/(reception)/renewals' },
         { key: 'freeze', label: 'Freeze / Unfreeze', icon: 'snow-outline', hint: 'Requests, frozen list and history', href: '/(reception)/freeze' },
@@ -101,7 +106,7 @@ export default function ReceptionMoreScreen() {
         title="More"
         eyebrow="Reception desk"
         subtitle="All desk operations, organised"
-        demo
+        demo={!live}
         actions={<SignOut />}>
         {sections.map((section, si) => (
           <RiseIn key={section.key} index={si} style={{ marginTop: si === 0 ? 0 : spacing.md }}>

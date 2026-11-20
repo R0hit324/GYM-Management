@@ -49,6 +49,7 @@ import { demoPlans } from '@/data/demo';
 import { formatCurrency, isEmail, isPhone } from '@/utils/format';
 import { checkPassword, useAuth } from '@/services/auth';
 import type { AuthChallenge } from '@/services/auth';
+import { submitJoinApplication } from '@/services/data';
 
 const STEPS = ['Details', 'Verify', 'Review'] as const;
 
@@ -186,6 +187,21 @@ export default function JoinScreen() {
     if (submitting) return;
     setSubmitError(null);
     setSubmitting(true);
+    if (provider.mode === 'live') {
+      const result = await submitJoinApplication(
+        fullName.trim(),
+        phone.trim(),
+        email.trim().toLowerCase(),
+        planId ?? '',
+      );
+      if (result.ok) {
+        router.replace(`/success?mode=signup&role=member&email=${encodeURIComponent(email.trim().toLowerCase())}` as never);
+        return;
+      }
+      setSubmitError(result.error);
+      setSubmitting(false);
+      return;
+    }
     const result = await provider.signUpMember({
       fullName,
       phone: phone.trim(),

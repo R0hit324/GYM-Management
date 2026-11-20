@@ -29,6 +29,7 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as WebBrowser from 'expo-web-browser';
 
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -61,13 +62,22 @@ import { useTokens } from '@/hooks/use-tokens';
 import { useAuth } from '@/services/auth/auth-context';
 import { useSessionPayments, useSessionMembers } from '@/data/session';
 import {
+  attachReceiptPath,
   createReversal,
+  issueReceipt,
   rejectPayment,
   useMembers,
   usePayments,
   usePlans,
   verifyPayment,
 } from '@/services/data';
+import { getSupabaseClient } from '@/services/supabase/client';
+import {
+  createReceiptStorage,
+  issueReceiptDocument,
+  type ReceiptStorageClientLike,
+} from '@/services/receipts';
+import { renderReceiptPdf } from '@/services/receipts/pdf';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { paymentStatusInfo, monthPaymentTotals } from '@/utils/payment';
 import {
@@ -221,8 +231,77 @@ export default function TransactionHistoryScreen() {
     refreshAll();
   };
 
-  const openReversal = (record: PaymentRecord) => {
+  /**
+   * Issue a receipt on a verified payment: render the PDF on device, upload
+   * it to the PRIVATE receipts bucket, attach the deterministic path, then
+   * set the one-way flag. The server recomputes the path and enforces
+   * role/AAL2; no amount, state or verifier column ever changes.
+   */
+  const handleIssueReceipt = async (record: PaymentRecord) => {
+    if (!live || actionBusy !== null) return;
     clearActionMessages();
+
+    const member = members.find((m) => m.id === record.memberId);
+    if (!member) {
+      setActionError('The member record for this payment could not be resolved.');
+      return;
+    }
+    const plan = plansResource.data.find((p) => p.id === record.planId) ?? null;
+    const client = await getSupabaseClient();
+    if (!client) {
+      setActionError('Receipt storage is not configured for this build.');
+      return;
+    }
+
+    setActionBusy(record.id);
+    const outcome = await issueReceiptDocument(
+      {
+        payment: record,
+        member,
+        plan,
+        reversedAmount: reversedByOriginal.get(record.id) ?? 0,
+      },
+      {
+        storage: createReceiptStorage(client as unknown as ReceiptStorageClientLike),
+        renderPdf: renderReceiptPdf,
+        attachPath: attachReceiptPath,
+        issueFlag: issueReceipt,
+      },
+    );
+    setActionBusy(null);
+    if (!outcome.ok) {
+      setActionError(outcome.error);
+      return;
+    }
+    setActionNotice(
+      outcome.duplicate
+        ? `Receipt ${outcome.receiptNumber} is already stored for ${record.memberName}.`
+        : `Receipt ${outcome.receiptNumber} stored privately for ${record.memberName}. The verified amount and state are unchanged; the issue was recorded in the audit trail.`,
+    );
+    refreshAll();
+  };
+
+  /** Open a stored receipt through a short-lived signed URL (RLS-gated). */
+  const handleOpenReceipt = async (record: PaymentRecord) => {
+    if (actionBusy !== null || !record.receiptPath) return;
+    clearActionMessages();
+    const client = await getSupabaseClient();
+    if (!client) {
+      setActionError('Receipt storage is not configured for this build.');
+      return;
+    }
+    setActionBusy(record.id);
+    const storage = createReceiptStorage(client as unknown as ReceiptStorageClientLike);
+    const signed = await storage.createSignedUrl(record.receiptPath);
+    setActionBusy(null);
+    if (!signed.ok || !signed.url) {
+      setActionError(signed.error?.message ?? 'The receipt link could not be created.');
+      return;
+    }
+    await WebBrowser.openBrowserAsync(signed.url);
+  };
+
+  const openReversal = (record: PaymentRecord) => {    clearActionMessages();
     setReversalError(null);
     setReversalAmount('');
     setReversalNote('');
@@ -523,6 +602,7 @@ export default function TransactionHistoryScreen() {
                   const remaining = remainingFor(p);
                   const canDecide = live && p.state === 'awaitingVerification' && !isReversal;
                   const canReverse = live && p.state === 'verified' && !isReversal && remaining > 0;
+                  const canIssueReceipt = live && p.state === 'verified' && !isReversal && !p.receiptIssued;
                   return (
                     <View key={p.id}>
                       {rowIndex > 0 && <WorkspaceRowDivider />}
@@ -572,7 +652,31 @@ export default function TransactionHistoryScreen() {
                             {p.verifiedAt
                               ? detailRow('Checked', `${formatDate(p.verifiedAt)} · ${formatTime(p.verifiedAt)}`)
                               : null}
-                            {detailRow('Receipt', p.receiptIssued ? 'Issued' : 'Not issued')}
+                            {detailRow(
+                              'Receipt',
+                              p.receiptPath
+                                ? 'Issued · PDF stored privately'
+                                : p.receiptIssued
+                                  ? 'Issued · PDF not stored'
+                                  : 'Not issued',
+                            )}
+                            {p.receiptPath ? (
+                              <View style={{ marginTop: spacing.sm }}>
+                                <Button
+                                  label={actionBusy === p.id ? 'Opening…' : 'Open receipt PDF'}
+                                  icon="open-outline"
+                                  size="small"
+                                  variant="secondary"
+                                  disabled={actionBusy !== null}
+                                  onPress={() => {
+                                    void handleOpenReceipt(p);
+                                  }}
+                                />
+                                <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                                  Opens a short-lived signed link to the private receipt PDF.
+                                </AppText>
+                              </View>
+                            ) : null}
                             {p.note ? (
                               <AppText variant="caption" style={{ color: colors.ownerInkMuted, marginTop: spacing.xs }}>
                                 {p.note}
@@ -639,6 +743,28 @@ export default function TransactionHistoryScreen() {
                                     </AppText>
                                   </>
                                 )}
+                              </View>
+                            )}
+
+                            {/* Receipt flag — one-way metadata on a verified
+                                payment; the amount and state never change. */}
+                            {canIssueReceipt && (
+                              <View style={{ marginTop: spacing.sm }}>
+                                <Button
+                                  label={actionBusy === p.id ? 'Issuing…' : 'Issue receipt'}
+                                  icon="receipt-outline"
+                                  size="small"
+                                  variant="secondary"
+                                  disabled={actionBusy !== null}
+                                  onPress={() => {
+                                    void handleIssueReceipt(p);
+                                  }}
+                                />
+                                <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing['3xs'] }}>
+                                  Generates the PDF, stores it in the private receipts bucket and
+                                  records the one-way flag plus an audit entry. The application never
+                                  changes an amount, state or verifier.
+                                </AppText>
                               </View>
                             )}
                           </OwnerWell>

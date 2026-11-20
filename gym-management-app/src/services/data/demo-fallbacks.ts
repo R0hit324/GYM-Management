@@ -91,3 +91,6 @@ export const demoPaymentsList = demoPayments;
 export const demoMembersList = demoMembers;
 export const demoAttendanceList = demoAttendance;
 export const demoPlansList = demoPlans;
+
+/** The demo member's own payment rows, derived from the existing ledger. */
+export const demoMyPayments = demoPayments.filter((payment) => payment.memberId === 'm-1042');

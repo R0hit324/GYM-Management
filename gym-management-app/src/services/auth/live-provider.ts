@@ -37,6 +37,8 @@ import type {
   ChallengeRequest,
   CompleteSignInResult,
   MemberSignUpInput,
+  MfaEnrollmentResult,
+  MfaEnrollmentStart,
   PasswordResetResult,
   PendingContact,
   RefreshResult,
@@ -55,6 +57,11 @@ interface ProfileRow {
   role: AuthRole;
   display_name: string | null;
   phone: string | null;
+  /**
+   * Durable authorisation switch owned by the staff admin functions.
+   * Missing on very old deployments, so only an explicit `false` denies.
+   */
+  is_active?: boolean | null;
 }
 
 interface LiveUser {
@@ -184,7 +191,7 @@ export class LiveAuthProvider implements AuthProvider {
       profile = await this.readProfile(client, user.id);
     }
 
-    if (!profile || profile.role !== expectedRole) {
+    if (!profile || profile.is_active === false || profile.role !== expectedRole) {
       await this.safeSignOut(client);
       return { status: 'invalid' };
     }
@@ -215,11 +222,15 @@ export class LiveAuthProvider implements AuthProvider {
     if (profile.role !== 'member') {
       const levels = await this.aal(client);
       if (levels.nextLevel !== 'aal2') {
-        // No verified TOTP factor: this staff account cannot reach the AAL2
-        // its write paths require, so signing it in would be misleading.
-        this.pending.delete(pendingId);
-        await this.safeSignOut(client);
-        return { status: 'invalid' };
+        // No verified TOTP factor yet. Keep the aal1 session ONLY for
+        // first-time enrolment: every authority function still refuses
+        // aal1, so this grants nothing. Signing the account in as if MFA
+        // were complete would misrepresent the session.
+        return {
+          status: 'mfa_enrollment_required',
+          pendingAuthId: pendingId,
+          email: (user.email ?? normalisedEmail).toLowerCase(),
+        };
       }
       const challenge = await this.createMfaChallenge(client, pendingId, user);
       if (!challenge) {
@@ -558,6 +569,125 @@ export class LiveAuthProvider implements AuthProvider {
   }
 
   // ------------------------------------------------------------------
+  // First-time staff MFA enrolment (live only)
+  // ------------------------------------------------------------------
+
+  async startMfaEnrollment(pendingAuthId: string): Promise<MfaEnrollmentStart> {
+    const client = await getSupabaseClient();
+    if (!client) return { status: 'invalid' };
+    this.sweep();
+
+    const pending = this.pending.get(pendingAuthId);
+    if (
+      !pending ||
+      pending.expiresAt <= Date.now() ||
+      pending.role === 'member'
+    ) {
+      return { status: 'invalid' };
+    }
+
+    // The aal1 session must still belong to the pending account.
+    const { data: userData, error: userError } = await client.auth.getUser();
+    const user = userData.user as LiveUser | null;
+    if (userError || !user || user.id !== pending.userId) return { status: 'invalid' };
+
+    const { data: factors, error: listError } = await client.auth.mfa.listFactors();
+    if (listError) return { status: 'invalid' };
+
+    const verified = factors?.totp?.find((factor) => factor.status === 'verified');
+    if (verified) return { status: 'already_enrolled' };
+
+    // Remove abandoned unverified TOTP factors so repeated enrolment
+    // attempts do not accumulate factors on the account.
+    for (const factor of factors?.all ?? []) {
+      if (factor.factor_type === 'totp' && factor.status === 'unverified') {
+        try {
+          await client.auth.mfa.unenroll({ factorId: factor.id });
+        } catch {
+          // A stale factor must not block a fresh enrolment.
+        }
+      }
+    }
+
+    const { data, error } = await client.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName: `Pulse ${pending.role === 'owner' ? 'Owner' : 'Reception'} · ${pending.email}`,
+    });
+
+    const enrollment = data as
+      | { id?: string; type?: string; totp?: { secret?: string; uri?: string } }
+      | null;
+    if (
+      error ||
+      !enrollment?.id ||
+      !enrollment.totp?.secret ||
+      !enrollment.totp.uri
+    ) {
+      return { status: 'invalid' };
+    }
+
+    return {
+      status: 'ready',
+      enrollment: {
+        factorId: enrollment.id,
+        friendlyName: `Pulse ${pending.role === 'owner' ? 'Owner' : 'Reception'} · ${pending.email}`,
+        // These are shown once to the signed-in staff member and never
+        // persisted by the app.
+        secret: enrollment.totp.secret,
+        uri: enrollment.totp.uri,
+      },
+    };
+  }
+
+  async completeMfaEnrollment(
+    pendingAuthId: string,
+    factorId: string,
+    code: string,
+  ): Promise<MfaEnrollmentResult> {
+    const client = await getSupabaseClient();
+    if (!client) return { status: 'invalid' };
+    this.sweep();
+
+    const pending = this.pending.get(pendingAuthId);
+    if (
+      !pending ||
+      pending.expiresAt <= Date.now() ||
+      pending.role === 'member' ||
+      !factorId
+    ) {
+      return { status: 'invalid' };
+    }
+
+    const { data: challenge, error: challengeError } = await client.auth.mfa.challenge({
+      factorId,
+    });
+    if (challengeError || !challenge) {
+      return { status: isExpiredError(challengeError) ? 'expired' : 'invalid' };
+    }
+
+    const { error } = await client.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.id,
+      code: code.trim(),
+    });
+
+    if (error) {
+      if (errorStatus(error) === 429) return { status: 'locked' };
+      if (isExpiredError(error)) return { status: 'expired' };
+      return { status: 'invalid_code' };
+    }
+
+    const levels = await this.aal(client);
+    if (levels.currentLevel !== 'aal2') {
+      // Never claim AAL2 unless the server actually promoted the session.
+      return { status: 'invalid_code' };
+    }
+
+    pending.mfaDone = true;
+    return { status: 'ok' };
+  }
+
+  // ------------------------------------------------------------------
   // Pending sign-in completion, reset, sessions
   // ------------------------------------------------------------------
 
@@ -581,7 +711,7 @@ export class LiveAuthProvider implements AuthProvider {
 
     // Re-read the authoritative role: it must still match the pending check.
     const profile = await this.readProfile(client, pending.userId);
-    if (!profile || profile.role !== pending.role) {
+    if (!profile || profile.is_active === false || profile.role !== pending.role) {
       this.pending.delete(pendingAuthId);
       return { status: 'invalid' };
     }
@@ -698,7 +828,7 @@ export class LiveAuthProvider implements AuthProvider {
   private async readProfile(client: AppSupabaseClient, userId: string): Promise<ProfileRow | null> {
     const { data, error } = await client
       .from('profiles')
-      .select('role, display_name, phone')
+      .select('role, display_name, phone, is_active')
       .eq('id', userId)
       .maybeSingle();
     if (error) return null;
@@ -847,7 +977,7 @@ export class LiveAuthProvider implements AuthProvider {
   ): Promise<AuthSession | null> {
     const user = session.user;
     const profile = await this.readProfile(client, user.id);
-    if (!profile) return null;
+    if (!profile || profile.is_active === false) return null;
 
     let mfaVerified = true;
     if (profile.role !== 'member') {

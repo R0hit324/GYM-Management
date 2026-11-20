@@ -683,6 +683,80 @@ try {
     owner.aal2,
   );
   check('settings RPC remains idempotent', cleared.ok, errText(cleared));
+
+  // =====================================================================
+  // Stage 5 — remaining write paths: member contact, plan lifecycle,
+  //          join application submission.
+  // =====================================================================
+  section('Stage 5 write paths');
+
+const contactUpdate = await rpc(
+  'update_member_contact',
+  { p_member_id: memberRowId, p_phone: '+919800000077', p_email: '3b8-contact-alt@example.com' },
+  rec1.aal2,
+);
+check('receptionist updates member contact at aal2', contactUpdate.ok, `HTTP ${contactUpdate.status} ${errText(contactUpdate)}`);
+
+const contactUpdateAal1 = await rpc(
+  'update_member_contact',
+  { p_member_id: memberRowId, p_phone: '+919800000078', p_email: null },
+  rec1.aal1,
+);
+check('receptionist member contact update at aal1 -> MFA required', !contactUpdateAal1.ok && /multi-factor/i.test(errText(contactUpdateAal1)), errText(contactUpdateAal1));
+
+const ownerContact = await rpc(
+  'update_member_contact',
+  { p_member_id: memberRowId, p_phone: '+919800000079', p_email: null },
+  owner.aal2,
+);
+check('owner cannot update member contact (receptionist-only)', !ownerContact.ok && /Insufficient role/i.test(errText(ownerContact)), errText(ownerContact));
+
+const createdPlan = await rpc(
+  'create_plan',
+  { p_name: 'Readiness New Plan', p_duration: 'quarterly', p_price: 4500, p_currency: 'INR', p_is_active: true },
+  owner.aal2,
+);
+check('owner creates plan', createdPlan.ok, `HTTP ${createdPlan.status} ${errText(createdPlan)}`);
+
+const recCreatePlan = await rpc(
+  'create_plan',
+  { p_name: 'Readiness Bad Plan', p_duration: 'quarterly', p_price: 4500, p_currency: 'INR', p_is_active: true },
+  rec1.aal2,
+);
+check('receptionist cannot create plan', !recCreatePlan.ok && /Insufficient role/i.test(errText(recCreatePlan)), errText(recCreatePlan));
+
+const monthlyPlan = (plans.data ?? []).find((p) => p.name === 'Monthly');
+const deactivatedPlan = monthlyPlan
+  ? await rpc('deactivate_plan', { p_plan_id: monthlyPlan.id }, owner.aal2)
+  : { ok: false, status: 500, data: null, error: null, text: 'no monthly plan' };
+check('owner deactivates plan', deactivatedPlan.ok, `HTTP ${deactivatedPlan.status} ${errText(deactivatedPlan)}`);
+
+  // The primary readiness member already applied and was decided earlier in
+  // this run (section 6); join_applications.auth_user_id is one-per-member.
+  // The member-self submission check therefore uses a second application-free member.
+  const secondSignup = await call('/auth/v1/signup', {
+    method: 'POST',
+    body: { email: `readiness-member2-${suffix}@local.test`, password, data: { full_name: 'Readiness Member Two', phone: '+919800000003' } },
+  });
+  check('second readiness member signup returns a session', secondSignup.ok && Boolean(secondSignup.data.access_token), `HTTP ${secondSignup.status} ${errText(secondSignup)}`);
+  const secondMemberToken = secondSignup.data.access_token;
+  const secondProvisioned = await rpc('provision_member_profile', { p_display_name: 'Readiness Member Two', p_phone: '+919800000003' }, secondMemberToken);
+  check('second readiness member provisioned', secondProvisioned.ok, `HTTP ${secondProvisioned.status} ${errText(secondProvisioned)}`);
+
+const joinSubmit = await rpc(
+  'submit_join_application',
+  { p_full_name: 'Readiness Applicant', p_phone: '+919800000088', p_email: 'readiness-applicant@example.com', p_plan_id: monthlyPlan?.id ?? 'aaaaaaaa-0000-0000-0000-000000000001' },
+  secondMemberToken,
+);
+check('member submits own join application', joinSubmit.ok, `HTTP ${joinSubmit.status} ${errText(joinSubmit)}`);
+
+const ownerJoinSubmit = await rpc(
+  'submit_join_application',
+  { p_full_name: 'Readiness Owner Applicant', p_phone: '+919800000089', p_email: 'readiness-owner@example.com', p_plan_id: 'aaaaaaaa-0000-0000-0000-000000000001' },
+  owner.aal2,
+);
+check('owner cannot submit join application', !ownerJoinSubmit.ok && /Insufficient role/i.test(errText(ownerJoinSubmit)), errText(ownerJoinSubmit));
+
 } catch (error) {
   failures += 1;
   console.error(`\nFATAL  ${error instanceof Error ? error.message : String(error)}`);

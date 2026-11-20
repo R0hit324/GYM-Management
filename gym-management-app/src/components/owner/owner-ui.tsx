@@ -499,13 +499,14 @@ export function OwnerScreen(props: {
 /**
  * Fino-style floating bottom navigation. White pill, four real
  * destinations, no centre action (no existing owner action justifies one).
- * "More" opens the lost-members module, which also hosts sign-out.
+ * "More" opens the management hub (retention + administration), which also
+ * hosts sign-out.
  */
 const navItems = [
   { key: 'overview', label: 'Overview', icon: 'home-outline', href: '/(owner)/dashboard' },
   { key: 'members', label: 'Members', icon: 'people-outline', href: '/(owner)/members' },
   { key: 'reports', label: 'Reports', icon: 'stats-chart-outline', href: '/(owner)/report' },
-  { key: 'more', label: 'More', icon: 'grid-outline', href: '/(owner)/lost' },
+  { key: 'more', label: 'More', icon: 'grid-outline', href: '/(owner)/more' },
 ] as const;
 
 export type OwnerNavKey = (typeof navItems)[number]['key'];
