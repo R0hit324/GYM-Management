@@ -84,6 +84,26 @@ grant execute on function suite_results.check_fail(text,text,text,text,text) to 
 grant execute on function suite_results.check_ok(text,text,text) to public;
 grant execute on function suite_results.check_true(text,text,boolean,text) to public;
 
+-- Test-only read helper for audit assertions.
+-- SECURITY DEFINER with an explicit search_path so audit assertions can evaluate
+-- their conditions without depending on the acting caller's RLS visibility.
+-- Validation infrastructure only; no application grants or RLS policies are changed.
+create function suite_results.receipt_stored_audit_ok(
+  p_row_id uuid,
+  p_actor uuid
+)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$ select count(*) = 1
+    from public.audit_log_entries
+   where action = 'receipt.stored'
+     and row_id = p_row_id
+     and actor = p_actor $$;
+
+grant execute on function suite_results.receipt_stored_audit_ok(uuid, uuid) to public;
+
 -- =====================================================================
 -- Fixtures (prefix 4a0)
 --   owner        4a0a1111-…-01
@@ -219,9 +239,19 @@ select suite_results.check_true('S03', 'receptionist sees every receipt object',
 select suite_results.check_ok('S04', 'receptionist may upload a receipt object',
   $s$insert into storage.objects (bucket_id, name) values ('receipts', '4a0b1111-0000-0000-0000-000000000001/4a0d1111-0000-0000-0000-000000000002.pdf')$s$);
 
-select suite_results.check_fail('S05', 'receptionist cannot UPDATE a stored receipt',
-  $s$update storage.objects set name = name || '.x' where bucket_id = 'receipts'$s$,
+-- Stage 2H / M2: database-level storage INSERT path-shape validation.
+select suite_results.check_fail('S09', 'receptionist cannot upload a receipt object with an invalid path',
+  $s$insert into storage.objects (bucket_id, name) values ('receipts', 'invalid/invalid.pdf')$s$,
   '42501');
+
+update storage.objects set name = name || '.x' where bucket_id = 'receipts';
+
+select suite_results.check_true('S05', 'receptionist cannot UPDATE a stored receipt',
+  (select count(*) = 0
+      from storage.objects
+     where bucket_id = 'receipts'
+       and position('.x' in name) > 0),
+  'update affected no rows (no UPDATE policy) so no stored receipt was modified');
 
 select suite_results.check_fail('S06', 'receptionist cannot DELETE a stored receipt',
   $s$delete from storage.objects where bucket_id = 'receipts'$s$,
@@ -295,11 +325,9 @@ select suite_results.check_ok('P08', 'same path retry is idempotent',
   $s$select public.attach_receipt_path('4a0d1111-0000-0000-0000-000000000001', '4a0b1111-0000-0000-0000-000000000001/4a0d1111-0000-0000-0000-000000000001.pdf')$s$);
 
 select suite_results.check_true('P09', 'exactly one receipt.stored audit row',
-  (select count(*) = 1
-     from public.audit_log_entries
-    where action = 'receipt.stored'
-      and row_id = '4a0d1111-0000-0000-0000-000000000001'
-      and actor = '4a0a2222-0000-0000-0000-000000000002'),
+  (select suite_results.receipt_stored_audit_ok(
+      '4a0d1111-0000-0000-0000-000000000001'::uuid,
+      '4a0a2222-0000-0000-0000-000000000002'::uuid) = true),
   'idempotent retry does not duplicate audit');
 commit;
 
@@ -330,7 +358,10 @@ commit;
 -- =====================================================================
 -- Cleanup and verdict
 -- =====================================================================
-delete from storage.objects where bucket_id = 'receipts';
+-- Storage objects are intentionally NOT deleted here: Supabase Storage blocks
+-- direct deletes from storage.objects (storage.protect_delete). Leftover receipt
+-- fixtures are cleared by an isolated `supabase db reset` instead of weakening
+-- the storage protection model.
 delete from public.audit_log_entries
  where actor in (select id from public.profiles where id::text like '4a0%')
     or row_id::text like '4a0%';

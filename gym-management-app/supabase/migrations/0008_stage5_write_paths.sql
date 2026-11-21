@@ -87,6 +87,7 @@ declare
   v_id uuid;
 begin
   perform public.require_role(array['owner']);
+  perform public.assert_aal2();
 
   if p_name is null or btrim(p_name) = '' then
     raise exception 'Plan name is required.'
@@ -132,6 +133,7 @@ declare
   v_plan public.plans%rowtype;
 begin
   perform public.require_role(array['owner']);
+  perform public.assert_aal2();
 
   select * into v_plan
     from public.plans

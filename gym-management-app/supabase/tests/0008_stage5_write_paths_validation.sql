@@ -259,6 +259,43 @@ select suite_results.check_true('P09', 'plan deactivated (is_active false)',
 commit;
 
 -- =====================================================================
+-- 8.10 Stage 2H — M1 AAL2 regression: privileged write paths must enforce AAL2
+-- =====================================================================
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"3b8a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal1"}';
+set local request.jwt.claim.sub = '3b8a1111-0000-0000-0000-000000000001';
+
+select suite_results.check_fail('M01', 'owner create_plan at aal1 -> MFA required',
+  $s$select public.create_plan('3b8 New Plan', 'quarterly', 4000, 'INR', true)$s$,
+  '42501', 'multi-factor');
+
+select suite_results.check_fail('M02', 'owner deactivate_plan at aal1 -> MFA required',
+  $s$select public.deactivate_plan('3b8c1111-0000-0000-0000-000000000001'::uuid)$s$,
+  '42501', 'multi-factor');
+
+select suite_results.check_fail('M03', 'owner update_gym_settings at aal1 -> MFA required',
+  $s$select public.update_gym_settings('Asia/Kolkata', null, null, 60)$s$,
+  '42501', 'multi-factor');
+
+select suite_results.check_fail('M04', 'owner update_plan_price at aal1 -> MFA required',
+  $s$select public.update_plan_price('3b8c1111-0000-0000-0000-000000000001'::uuid, 2000)$s$,
+  '42501', 'multi-factor');
+
+commit;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"3b8a2222-0000-0000-0000-000000000002","role":"receptionist","aal":"aal1"}';
+set local request.jwt.claim.sub = '3b8a2222-0000-0000-0000-000000000002';
+
+select suite_results.check_fail('M05', 'receptionist decide_application at aal1 -> MFA required',
+  $s$select public.decide_application('3b8b1111-0000-0000-0000-000000000001'::uuid, true)$s$,
+  '42501', 'multi-factor');
+
+commit;
+
+-- =====================================================================
 -- 8.3 submit_join_application — member self-submission
 -- =====================================================================
 begin;

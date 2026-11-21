@@ -471,7 +471,7 @@ commit;
 -- R04: OWNER calling a receptionist function -> 'Insufficient role'
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('R04', 'owner verify_payment -> Insufficient role',
@@ -516,7 +516,7 @@ commit;
 
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('R10', 'owner set_member_discount -> Insufficient role (O-15 owner read-only)',
@@ -630,7 +630,7 @@ commit;
 
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('F09', 'owner decide_freeze -> Insufficient role [C1]',
@@ -779,7 +779,7 @@ commit;
 
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('C06', 'owner cannot mint (§8.1: owner reads the door screen, staff mint)',
@@ -878,7 +878,7 @@ commit;
 -- C16: owner persona cannot check in (member-only gate)
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('C16', 'owner check_in -> Insufficient role',
@@ -1013,7 +1013,7 @@ select suite_results.check_true('V11', 'M1 pendingPayment -> active until today 
 -- V12: owner cannot verify (role gate before anything else)
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('V12', 'owner verify_payment -> Insufficient role',
@@ -1108,7 +1108,7 @@ select suite_results.check_true('J06', 'PW10 rejected with decider attribution +
 -- J07: owner cannot reject
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('J07', 'owner reject_payment -> Insufficient role',
@@ -1282,7 +1282,7 @@ select suite_results.check_true('X14', 'backstop fired cleanly: PV2 reversals su
 -- P01: owner raises plan C5 1200 -> 1300 [REC: owner-only]
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_ok('P01', 'owner updates plan price to 1300',
@@ -1437,7 +1437,7 @@ select suite_results.check_true('P14', 'PW9 verify applied assignment atomically
 -- default-validity path was exercised at 60)
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_ok('P15', 'owner updates gym settings (upi + validity 90)',
@@ -1461,11 +1461,13 @@ select suite_results.check_true('P16', 'settings persisted: validity 90, upi id,
 -- =====================================================================
 -- SECTION L — decide_application: the ONLY member-creation path
 -- [audit condition D: linking integrity]
+-- Stage 2H (M1): decide_application now enforces AAL2, so the approval
+-- workflow below runs under genuine AAL2 receptionist claims.
 -- =====================================================================
 
 begin;
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"3b3a2222-0000-0000-0000-000000000002","role":"receptionist"}';
+set local request.jwt.claims = '{"sub":"3b3a2222-0000-0000-0000-000000000002","role":"receptionist","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a2222-0000-0000-0000-000000000002';
 
 -- L01: a STAFF profile cannot be hijacked into a member record
@@ -1684,7 +1686,7 @@ select suite_results.check_fail('G09', 'member INSERT into payments -> override 
           'cash', 'awaitingVerification', '3b3a3333-0000-0000-0000-000000000003')$s$,
   '42501', 'Only receptionists');
 
-set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner"}';
+set local request.jwt.claims = '{"sub":"3b3a1111-0000-0000-0000-000000000001","role":"owner","aal":"aal2"}';
 set local request.jwt.claim.sub = '3b3a1111-0000-0000-0000-000000000001';
 
 select suite_results.check_fail('G10', 'owner INSERT into payments -> override guard (spoofed claim irrelevant)',

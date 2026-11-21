@@ -110,6 +110,19 @@ grant execute on function suite_results.check_fail(text,text,text,text,text) to 
 grant execute on function suite_results.check_ok(text,text,text) to public;
 grant execute on function suite_results.check_true(text,text,boolean,text) to public;
 
+-- Test-only read helper for audit assertions.
+-- SECURITY DEFINER with an explicit search_path so audit assertions can evaluate
+-- their conditions without depending on the acting caller's RLS visibility.
+-- Validation infrastructure only; no application grants or RLS policies are changed.
+create function suite_results.audit_action_count(p_action text, p_actor uuid)
+returns bigint
+language sql
+security definer
+set search_path = public
+as $$ select count(*) from public.audit_log_entries where action = p_action and actor = p_actor $$;
+
+grant execute on function suite_results.audit_action_count(text, uuid) to public;
+
 -- =====================================================================
 -- Fixtures (prefix 3d8)
 --   owner           3d8a1111-…-01
@@ -268,10 +281,7 @@ select suite_results.check_true('C05', 'marketing refusal is recorded as accepte
 
 select suite_results.check_true('C06', 'each consent row wrote one audit entry',
   (
-    select count(*) = 3
-      from public.audit_log_entries
-     where action = 'consent.recorded'
-       and actor = '3d8a2222-0000-0000-0000-000000000002'
+    select suite_results.audit_action_count('consent.recorded', '3d8a2222-0000-0000-0000-000000000002'::uuid) = 3
   ),
   'normal profile path is audited');
 
@@ -410,10 +420,7 @@ select suite_results.check_true('P04', 'requests are bound to the caller',
 
 select suite_results.check_true('P05', 'each request wrote one audit entry',
   (
-    select count(*) = 3
-      from public.audit_log_entries
-     where action = 'privacy.requested'
-       and actor = '3d8a2222-0000-0000-0000-000000000002'
+    select suite_results.audit_action_count('privacy.requested', '3d8a2222-0000-0000-0000-000000000002'::uuid) = 3
   ),
   'request intake is auditable');
 

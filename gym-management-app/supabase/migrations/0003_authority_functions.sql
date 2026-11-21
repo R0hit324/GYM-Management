@@ -1152,6 +1152,7 @@ declare
   v_old numeric;
 begin
   perform public.require_role(array['owner']);
+  perform public.assert_aal2();
 
   if p_price is null or p_price <= 0 then
     raise exception 'Plan price must be positive.'
@@ -1201,6 +1202,7 @@ declare
   v_member_id uuid;
 begin
   perform public.require_role(array['receptionist']);
+  perform public.assert_aal2();
 
   select * into v_app
     from public.join_applications
@@ -1310,6 +1312,7 @@ declare
   v_old public.app_settings%rowtype;
 begin
   perform public.require_role(array['owner']);
+  perform public.assert_aal2();
 
   select * into v_old from public.app_settings where id = 1 for update;
   if not found then
