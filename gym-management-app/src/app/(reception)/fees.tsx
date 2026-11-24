@@ -153,19 +153,19 @@ export default function CollectPaymentScreen() {
   // read this store.
   const planPrices = useSessionPlanPrices();
 
-  // Member Profile hands over ?member=<id> — preselected when it resolves
+  // Member Profile hands over ?id=<id> — preselected when it resolves
   // to a real member; an invalid id falls back to step 1 with a note.
-  const params = useLocalSearchParams<{ member?: string }>();
+  const params = useLocalSearchParams<{ id?: string }>();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [memberId, setMemberId] = useState<string | null>(() => {
-    const id = typeof params.member === 'string' ? params.member : null;
+    const id = typeof params.id === 'string' ? params.id : null;
     return id !== null && members.some((m) => m.id === id) ? id : null;
   });
   const [query, setQuery] = useState('');
-  // A valid ?member= handoff preselects that member's own plan (renewal).
+  // A valid ?id= handoff preselects that member's own plan (renewal).
   const [planId, setPlanId] = useState<string | null>(() => {
-    const id = typeof params.member === 'string' ? params.member : null;
+    const id = typeof params.id === 'string' ? params.id : null;
     const m = id !== null ? (members.find((x) => x.id === id) ?? null) : null;
     return m ? m.planId : null;
   });
@@ -183,7 +183,7 @@ export default function CollectPaymentScreen() {
   const [recordError, setRecordError] = useState<string | null>(null);
 
   const member: Member | null = memberId ? (members.find((m) => m.id === memberId) ?? null) : null;
-  const paramInvalid = typeof params.member === 'string' && member === null;
+  const paramInvalid = typeof params.id === 'string' && member === null;
 
   // Step 1 search: name, phone and member ID (mirrors the register/search
   // conventions; digits match the masked demo phone numbers honestly).
@@ -441,7 +441,7 @@ export default function CollectPaymentScreen() {
                     variant="secondary"
                     icon="person-outline"
                     fullWidth
-                    onPress={() => router.push(`/(reception)/member-profile?member=${member.id}` as never)}
+                    onPress={() => router.push(`/(reception)/member-profile?id=${member.id}` as never)}
                   />
                 )}
                 <Button label="Collect another payment" variant="secondary" fullWidth onPress={resetForNewPayment} />
@@ -451,6 +451,7 @@ export default function CollectPaymentScreen() {
         ) : (
           <View key={step}>
             {/* Step 1 — Select member */}
+            {step === 1 && (
             <RiseIn>
               <WorkspaceSection title="1 · Select member">
                 <SearchBar
@@ -517,9 +518,10 @@ export default function CollectPaymentScreen() {
                 )}
               </WorkspaceSection>
             </RiseIn>
+            )}
 
             {/* Step 2 — Select plan */}
-            {member && (
+            {member && step === 2 && (
               <RiseIn index={1} style={{ marginTop: spacing.sm }}>
                 <WorkspaceSection title="2 · Select plan">
                   {plans.map((p) => {
@@ -585,7 +587,7 @@ export default function CollectPaymentScreen() {
             )}
 
             {/* Step 3 — Apply discount */}
-            {member && plan && (
+            {member && plan && step === 3 && (
               <RiseIn index={2} style={{ marginTop: spacing.sm }}>
                 <WorkspaceSection title="3 · Apply discount">
                   <WorkspaceCard>
@@ -628,7 +630,7 @@ export default function CollectPaymentScreen() {
             )}
 
             {/* Step 4 — Choose method */}
-            {member && plan && !invalidDiscount && (
+            {member && plan && !invalidDiscount && step === 4 && (
               <RiseIn index={3} style={{ marginTop: spacing.sm }}>
                 <WorkspaceSection title="4 · Payment method">
                   <View style={{ flexDirection: 'row', gap: spacing.xs }}>
@@ -725,7 +727,7 @@ export default function CollectPaymentScreen() {
             )}
 
             {/* Step 5 — Review */}
-            {member && plan && !invalidDiscount && (
+            {member && plan && !invalidDiscount && step === 5 && (
               <RiseIn index={4} style={{ marginTop: spacing.sm }}>
                 <WorkspaceSection title="5 · Review before recording">
                   <WorkspaceCard>

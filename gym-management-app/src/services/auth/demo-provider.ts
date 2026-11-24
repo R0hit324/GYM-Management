@@ -418,7 +418,12 @@ export class DemoAuthProvider implements AuthProvider {
     const found = this.challenges.get(challengeId);
     if (!found) return null;
     if (found.expiresAt <= this.now) return null;
-    return this.toPublicChallenge(found, found.resetTargetExists);
+    // The MFA screen re-fetches the challenge handed over from sign-in by id;
+    // for mfa challenges a demo code must be surfaced (the demo user has
+    // nothing else to verify with). Live providers never set demoCode, and
+    // reset-target semantics do not apply here.
+    const surfaceCode = found.kind === 'mfa';
+    return this.toPublicChallenge(found, surfaceCode);
   }
 
   async getPendingContact(pendingAuthId: string): Promise<PendingContact | null> {

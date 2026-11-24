@@ -185,6 +185,16 @@ export default function ReceptionMembersScreen() {
             />
           </RiseIn>
         )}
+        {plansResource.status === 'error' && (
+          <RiseIn>
+            <ErrorState
+              title="Membership plans could not load"
+              message={plansResource.error ?? 'The plan catalogue is unavailable right now.'}
+              onRetry={refreshAll}
+              style={{ marginTop: spacing.sm }}
+            />
+          </RiseIn>
+        )}
         {/* Bucket KPIs — the date rule, not stored flags */}
         <RiseIn>
           <StatRow>

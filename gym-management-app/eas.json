@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/eas/eas-cli/main/schema.json",
+  "build": {
+    "development": {
+      "android": {
+        "gradleCommand": "assembleDebug"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "android": {
+        "gradleCommand": "assembleRelease"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "production": {
+      "android": {
+        "releaseChannel": "default"
+      },
+      "ios": {
+        "releaseChannel": "default"
+      }
+    }
+  }
+}

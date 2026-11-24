@@ -79,6 +79,9 @@ export default function OwnerPrivacyRequestsScreen() {
   }, [refresh]);
 
   const openAction = (request: PrivacyRequestRecord, state: PrivacyResolutionState) => {
+    // Decision controls exist only against a live backend; demo mode keeps
+    // the queue empty and must not offer (or accept) decision actions.
+    if (!live) return;
     setAction({ request, state });
     setNote('');
     setError(null);
@@ -200,7 +203,7 @@ export default function OwnerPrivacyRequestsScreen() {
                         Owner note: {request.resolutionNote}
                       </AppText>
                     )}
-                    {request.state === 'submitted' && (
+                    {live && request.state === 'submitted' && (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: 2 }}>
                         <Button
                           label="Start review"
@@ -219,7 +222,7 @@ export default function OwnerPrivacyRequestsScreen() {
                         </PressSurface>
                       </View>
                     )}
-                    {request.state === 'in_review' && (
+                    {live && request.state === 'in_review' && (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: 2 }}>
                         <Button
                           label="Mark completed"

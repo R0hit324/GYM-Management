@@ -101,6 +101,7 @@ export default function MemberPrivacyScreen() {
   const [requests, setRequests] = useState<PrivacyRequestRecord[]>([]);
   const [loading, setLoading] = useState(live);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [consentError, setConsentError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [sheet, setSheet] = useState<PrivacyRequestType | null>(null);
@@ -150,6 +151,7 @@ export default function MemberPrivacyScreen() {
     setBusy('marketing');
     setNotice(null);
     setLoadError(null);
+    setConsentError(null);
     const outcome = await recordConsent({
       type: 'marketing',
       version: CONSENT_DOCUMENT_VERSIONS.privacyPolicy,
@@ -157,8 +159,10 @@ export default function MemberPrivacyScreen() {
       source: 'member_privacy_screen',
     });
     if (!outcome.ok) {
-      setLoadError(outcome.error);
+      // A failed consent write is a submit error, never a load error.
+      setConsentError(outcome.error);
     } else {
+      setConsentError(null);
       setNotice(
         next
           ? 'Marketing consent recorded. This does not affect your membership.'
@@ -223,6 +227,12 @@ export default function MemberPrivacyScreen() {
                 <Button label="Try again" size="small" variant="secondary" onPress={() => void refresh()} />
               </View>
             )}
+          </WorkspaceWell>
+        )}
+
+        {consentError && (
+          <WorkspaceWell>
+            <AppText style={{ color: colors.dangerStrong }}>{consentError}</AppText>
           </WorkspaceWell>
         )}
 

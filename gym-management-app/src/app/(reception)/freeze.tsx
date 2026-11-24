@@ -279,6 +279,7 @@ export default function ReceptionFreezeScreen() {
       return;
     }
 
+    setSaving(true);
     setDemoRequests((prev) => [
       {
         id: `frz-${Date.now()}`,
@@ -292,6 +293,7 @@ export default function ReceptionFreezeScreen() {
       },
       ...prev,
     ]);
+    setSaving(false);
     resetForm();
     setRequestedOpen(true);
   };

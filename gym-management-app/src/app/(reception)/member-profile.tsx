@@ -491,7 +491,7 @@ export default function MemberProfileScreen() {
               <Button
                 label="Collect payment"
                 icon="cash-outline"
-                onPress={() => router.push(`/(reception)/fees?member=${member.id}` as never)}
+                onPress={() => router.push(`/(reception)/fees?id=${member.id}` as never)}
               />
               <Button
                 label="Renew membership"

@@ -10,7 +10,7 @@
  * expired, cyan = frozen) with moderate count-ups.
  */
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Linking, View } from 'react-native';
 
 import { router } from 'expo-router';
 
@@ -38,8 +38,9 @@ import {
   OwnerEmptyState,
 } from '@/components/owner/owner-ui';
 import { useTokens } from '@/hooks/use-tokens';
+import { useAuth } from '@/services/auth';
 import { useSessionMembers } from '@/data/session';
-import { useMembers } from '@/services/data';
+import { recordFollowUp, useMembers } from '@/services/data';
 import { DataRefreshControl, ErrorState, SkeletonRow } from '@/components/ui/feedback';
 import { formatDate, daysBetween, memberDisplayId } from '@/utils/format';
 import type { Member } from '@/types/domain';
@@ -65,11 +66,20 @@ export default function RenewalsScreen() {
   const [filter, setFilter] = useState('expiring');
   const [selected, setSelected] = useState<Member | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
+  const { session } = useAuth();
+
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
+  const [followUpSuccess, setFollowUpSuccess] = useState(false);
+  const [followUpChannel] = useState<'called' | 'messaged' | 'visited'>('called');
+  const [followUpOutcome] = useState<'won' | 'lost' | 'open'>('open');
+  const [followUpNote] = useState('');
 
   const membersResource = useMembers();
   const sessionMembers = useSessionMembers();
   // Demo mode keeps the session store so contact edits remain visible.
   const members = membersResource.isLive ? membersResource.data : sessionMembers;
+  const live = membersResource.isLive;
 
   // Bucket counts for the KPI row — computed from the member records,
   // same rules as the list filters below. Never asserted.
@@ -85,6 +95,39 @@ export default function RenewalsScreen() {
     }
     return { expiring, expired, frozen };
   }, [members]);
+
+  const recordFollowUpNow = async (member: Member) => {
+    if (!membersResource.isLive) {
+      // Demo mode keeps its approved demo follow-ups; the server write path
+      // (follow_up_events) is live-only.
+      setFollowUpError('Demo mode cannot record follow-ups.');
+      return;
+    }
+    const outcome = followUpOutcome === 'won' ? 'won' : followUpOutcome === 'lost' ? 'lost' : 'open';
+    const channel = followUpChannel === 'called' ? 'called' : followUpChannel === 'messaged' ? 'messaged' : 'visited';
+    setFollowUpSaving(true);
+    setFollowUpError(null);
+    setFollowUpSuccess(false);
+    const result = await recordFollowUp({
+      actor: session?.userId ?? '',
+      memberId: member.id,
+      channel,
+      outcome,
+      note: followUpNote,
+    });
+    setFollowUpSaving(false);
+    if (!result.ok) {
+      setFollowUpError(result.error);
+      return;
+    }
+    setFollowUpSuccess(true);
+    membersResource.refresh();
+  };
+
+  const openCallIntent = (member: Member) => {
+    const phone = member.phone.replace(/[\s-]/g, '');
+    if (phone) void Linking.openURL(`tel:${phone}`).catch(() => undefined);
+  };
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -256,7 +299,7 @@ export default function RenewalsScreen() {
               )}
               <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
                 <Button label="Call member" size="small" icon="call-outline" onPress={() => setContactOpen(true)} />
-                <Button label="Open fees entry" size="small" variant="secondary" onPress={() => router.push('/(reception)/fees')} />
+                <Button label="Open fees entry" size="small" variant="secondary" onPress={() => router.push(`/(reception)/fees?id=${selected.id}`)} />
               </View>
               <AppText variant="caption" style={{ color: colors.ownerInkSubtle, marginTop: spacing.xs }}>
                 Contact and follow-up writes are audited staff actions in the real backend.
@@ -269,10 +312,44 @@ export default function RenewalsScreen() {
           visible={contactOpen}
           onClose={() => setContactOpen(false)}
           title="Contact member"
-          subtitle="Demo: no call or message is placed">
+          subtitle={live ? 'Call the member or record a desk follow-up' : 'Contact actions in this demo session stay local'}>
           <AppText variant="label" style={{ color: colors.ownerInkMuted }}>
-            In production this opens the phone with the member&apos;s number prefilled and records a follow-up entry with the authenticated receptionist as actor. Clients cannot forge staff follow-ups because the actor always comes from the session.
+            {live
+              ? 'The actor on every follow-up is the authenticated receptionist — clients cannot forge staff follow-ups. Call the member now, or log the outcome here.'
+              : 'Demo mode keeps its approved demo follow-ups; the server write path is live-only.'}
           </AppText>
+          <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+            {selected ? (
+              <Button
+                label={followUpSaving ? 'Recording…' : 'Log follow-up'}
+                size="small"
+                icon="create-outline"
+                fullWidth
+                disabled={followUpSaving}
+                onPress={() => void recordFollowUpNow(selected)}
+              />
+            ) : null}
+            {selected ? (
+              <Button
+                label="Call member"
+                size="small"
+                icon="call-outline"
+                variant="secondary"
+                fullWidth
+                onPress={() => openCallIntent(selected)}
+              />
+            ) : null}
+          </View>
+          {followUpError ? (
+            <AppText variant="label" style={{ color: colors.dangerStrong, marginTop: spacing.sm }}>
+              The server refused the follow-up: {followUpError}
+            </AppText>
+          ) : null}
+          {followUpSuccess ? (
+            <AppText variant="label" style={{ color: colors.ownerSuccessDeep, marginTop: spacing.sm }}>
+              The follow-up was recorded for {selected?.name}.
+            </AppText>
+          ) : null}
         </ModalSheet>
 
         <AppText variant="caption" style={{ color: colors.ownerInkSubtle, textAlign: 'center', marginTop: spacing.lg }}>

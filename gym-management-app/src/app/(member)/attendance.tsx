@@ -125,7 +125,7 @@ export default function MemberAttendanceScreen() {
     membershipResource.status === 'loading' ||
     attendanceResource.status === 'loading' ||
     plansResource.status === 'loading';
-  const hasError = membershipResource.status === 'error' || attendanceResource.status === 'error';
+  const hasError = membershipResource.status === 'error' || attendanceResource.status === 'error' || plansResource.status === 'error';
   const refreshAll = () => {
     membershipResource.refresh();
     attendanceResource.refresh();
@@ -233,6 +233,7 @@ export default function MemberAttendanceScreen() {
               message={
                 membershipResource.error ??
                 attendanceResource.error ??
+                plansResource.error ??
                 'Your membership and visits are unavailable right now.'
               }
               onRetry={refreshAll}
@@ -512,8 +513,6 @@ export default function MemberAttendanceScreen() {
                 icon="footsteps-outline"
                 title="No visits yet"
                 hint="Your first check-in will appear here. Plan a session and scan at the door."
-                actionLabel="Plan your first session"
-                onAction={() => undefined}
               />
             ) : (
               <RiseIn index={6}>

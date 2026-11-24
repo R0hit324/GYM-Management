@@ -85,7 +85,13 @@ export default function MemberPaymentsScreen() {
       setReceiptError(signed.error?.message ?? 'The receipt link could not be created.');
       return;
     }
-    await WebBrowser.openBrowserAsync(signed.url);
+    try {
+      await WebBrowser.openBrowserAsync(signed.url);
+    } catch {
+      // The OS decides whether a handler exists; a failure here must surface
+      // honestly rather than surface as an unhandled rejection.
+      setReceiptError('The receipt could not be opened on this device.');
+    }
   };
 
   const totals = useMemo(() => {
